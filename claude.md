@@ -1,210 +1,128 @@
-# תיעוד פיתוח - לוח שנה עברי
+# AI Agent Instructions
 
-## סקירה כללית
+## Project Context
 
-תוסף זה מספק לוח שנה עברי-לועזי משולב לאוצריא, עם עיצוב Material Design 3 מלא.
+This is an Otzaria plugin project. Otzaria is a Jewish texts library application, and this plugin extends its functionality using web technologies.
 
-## ארכיטקטורה
+## Key Technologies
 
-### קבצים עיקריים
+- **Otzaria Plugin SDK**: JavaScript/TypeScript SDK for interacting with the host application
+- **Material Design 3**: UI component library for consistent design
+- **Web Technologies**: HTML, CSS, JavaScript/TypeScript
 
-1. **src/index.html** - מבנה HTML של הלוח
-   - סרגל עליון עם כפתורי ניווט
-   - כותרת חודש/שנה
-   - מתג תצוגה (חודש/שבוע)
-   - גריד של ימים
+## Development Guidelines
 
-2. **src/styles.css** - עיצוב מלא
-   - Material Design 3 tokens
-   - Responsive design
-   - תמיכה ב-RTL
-   - אנימציות ומעברים
+### Plugin Architecture
 
-3. **src/main.ts** - לוגיקה ראשית
-   - ניהול state (תאריך נוכחי, נבחר, תצוגה)
-   - חישובי תאריך עברי
-   - רינדור הלוח
-   - טיפול באירועים
-   - אינטגרציה עם Otzaria SDK
+1. **Manifest-Driven**: All plugin metadata, permissions, and capabilities are declared in `manifest.json`
+2. **WebView-Based**: Plugins run in a sandboxed WebView environment
+3. **Event-Driven**: Communication with the host uses an event-based API (`Otzaria.call()` and `Otzaria.on()`)
 
-### מבנה State
+### Code Organization
 
-```typescript
-let currentDate = new Date();      // החודש המוצג
-let selectedDate = new Date();     // התאריך הנבחר
-let currentView: 'month' | 'week'; // סוג התצוגה
-let theme: any;                    // נושא צבעים מ-Otzaria
-```
+- Keep source code in the `src/` directory
+- Entry point is specified in the manifest (`entrypoint` field)
+- Use TypeScript definitions from `otzaria_plugin.d.ts` for type safety
 
-### תהליך רינדור
+### Permissions
 
-1. `generateCalendarDays()` - יוצר מערך של 42 (חודש) או 7 (שבוע) ימים
-2. לכל יום מחושב:
-   - תאריך גרגוריאני
-   - תאריך עברי (דרך Otzaria API)
-   - סטטוס (היום, נבחר, חודש אחר, שבת)
-   - חגים ומועדים
-3. `createDayCell()` - יוצר DOM element לכל יום
-4. `renderCalendar()` - מרכיב הכל ביחד
+Always declare required permissions in the manifest:
+- `search.fulltext.read` - Search library content
+- `reader.open` - Open books in the reader
+- `ui.feedback` - Show UI messages
+- `plugin.storage.read/write` - Store plugin data
+- `calendar.read` - Access calendar data
+- `published_data.write` - Publish data to the app
 
-## אינטגרציה עם Otzaria
+### Best Practices
 
-### Events
-
-```typescript
-// טעינה ראשונית
-Otzaria.on('plugin.boot', (bootData) => {
-  applyTheme(bootData.theme);
-  setupEventListeners();
-  renderCalendar();
-});
-
-// שינוי נושא
-Otzaria.on('theme.changed', (themeData) => {
-  applyTheme(themeData);
-});
-```
-
-### API Calls
-
-```typescript
-// קבלת תאריך עברי
-const response = await Otzaria.call('calendar.getJewishDate', {
-  date: gregorianDate.toISOString()
-});
-```
-
-## חישובי תאריך עברי
-
-### המרת מספרים לעברית
-
-```typescript
-function numberToHebrew(num: number): string {
-  // טיפול מיוחד ב-15, 16 (טו, טז)
-  // המרה לפי ספרות אחדות, עשרות, מאות
-}
-```
-
-### פורמט שנה עברית
-
-```typescript
-function formatHebrewYear(year: number): string {
-  // ה׳תשפ״ה
-  // מוסיף ה׳ לאלפים, גרשיים לסוף
-}
-
-```
-
-## עיצוב Material Design 3
-
-### Color Scheme
-
-הלוח משתמש ב-color tokens מ-Otzaria:
-- `primary` - תאריך נוכחי, כפתורים פעילים
-- `primaryContainer` - תאריך נבחר
-- `secondaryContainer` - שבתות, מועדים
-- `surface` - רקע תאים
-- `onSurface` - טקסט
-- `outline` - גבולות
-
-### Typography
-
-- Roboto - פונט ראשי
-- Material Icons - אייקונים
-
-### Elevation
-
-- תאים: 0dp (רגיל), 2dp (hover/today)
-- כפתורים: 0dp (flat)
-
-## Responsive Design
-
-### Breakpoints
-
-- Mobile: < 768px
-  - כפתורים קטנים יותר
-  - פונטים מותאמים
-  
-- Compact height: < 600px
-  - תאים קטנים יותר
-  - פחות מידע בכל תא
-
-### Grid Layout
-
-- תצוגת חודש: 7 עמודות × 6 שורות
-- תצוגת שבוע: 7 עמודות × 1 שורה
-
-## הרחבות עתידיות
-
-### אפשרויות להוספה
-
-1. **אירועים מותאמים אישית**
-   - שימוש ב-`published_data.write` permission
-   - שמירה ב-plugin storage
-   - סנכרון עם Google Calendar
-
-2. **זמני היום**
-   - שימוש ב-`calendar.getDailyTimes`
-   - הצגה בתאים או בפאנל צד
-
-3. **חיפוש תאריך**
-   - דיאלוג קפיצה לתאריך
-   - פירוש קלט עברי/לועזי
-
-4. **הדפסה**
-   - ייצוא PDF
-   - בחירת טווח תאריכים
-
-5. **הגדרות**
-   - בחירת עיר (לזמנים)
-   - ארץ ישראל / חו״ל
-   - סוג לוח (עברי/לועזי/משולב)
-
-## טיפים לפיתוח
-
-### Hot Reload
-
-במצב פיתוח, כל שמירה של קובץ תרענן אוטומטית את התוסף.
-
-### Debugging
-
-```typescript
-console.log('Debug info:', data);
-```
-
-הקונסול זמין ב-DevTools של אוצריא (F12).
+1. **Type Safety**: Use TypeScript and the provided type definitions
+2. **Error Handling**: Always check `response.success` when calling `Otzaria.call()`
+3. **Responsive Design**: Support both RTL and LTR layouts
+4. **Theme Integration**: Listen to `theme.changed` events and adapt UI accordingly
+5. **Minimal Permissions**: Only request permissions actually needed
+6. **Network Restrictions**: Declare network access requirements in manifest
 
 ### Testing
 
-1. בדוק תצוגת חודש ושבוע
-2. נווט בין חודשים
-3. בחר תאריכים שונים
-4. החלף בין נושא בהיר וכהה
-5. בדוק responsive (שנה גודל חלון)
+- Test in Otzaria debug mode with hot reload enabled
+- Verify all permissions are properly declared
+- Test with both light and dark themes
+- Test RTL layout (Hebrew interface)
 
-## בעיות נפוצות
+## Common Patterns
 
-### תאריכים עבריים לא מדויקים
+### Initializing the Plugin
 
-אם ה-API של Otzaria לא זמין, יש fallback פשוט. לדיוק מלא, וודא ש:
-- ההרשאה `calendar.read` מאושרת
-- אוצריא רצה בגרסה 0.9.0+
+```typescript
+Otzaria.on('plugin.boot', (bootData) => {
+  // Initialize with boot data
+  console.log('Plugin ID:', bootData.plugin.id);
+  console.log('App version:', bootData.app.version);
+  console.log('Theme:', bootData.theme.mode);
+});
 
-### עיצוב לא מתעדכן
+Otzaria.on('plugin.ready', () => {
+  // Plugin is fully ready
+});
+```
 
-וודא ש-`applyTheme()` נקרא אחרי כל שינוי state.
+### Making API Calls
 
-### ביצועים
+```typescript
+const response = await Otzaria.call('library.findBooks', {
+  query: 'search term'
+});
 
-אם הרינדור איטי:
-- שקול caching של תאריכים עבריים
-- השתמש ב-`requestAnimationFrame` לאנימציות
-- הגבל את מספר ה-DOM updates
+if (response.success) {
+  console.log('Results:', response.data);
+} else {
+  console.error('Error:', response.error);
+}
+```
 
-## תרומה
+### Handling Theme Changes
 
-לפני שליחת PR:
-1. הרץ `npm run build` ווודא שאין שגיאות
-2. בדוק ב-2 נושאים (בהיר/כהה)
-3. בדוק responsive
-4. עדכן README אם צריך
+```typescript
+Otzaria.on('theme.changed', (theme) => {
+  document.body.style.backgroundColor = theme.colorScheme.surface;
+  document.body.style.color = theme.colorScheme.onSurface;
+});
+```
+
+## Material Design 3 Integration
+
+Use Material Design 3 components for consistent UI:
+- Import from CDN or npm package
+- Apply theme colors from `bootData.theme.colorScheme`
+- Follow Material Design guidelines for Hebrew/RTL layouts
+
+## Debugging
+
+- Use browser DevTools (available in debug mode)
+- Check manifest validation errors in the error screen
+- Monitor console for API call responses
+- Use `ui.showMessage` for user-facing feedback
+
+## Resources
+
+- Otzaria Plugin SDK documentation in the SDK folder
+- Material Design 3: https://m3.material.io/
+- TypeScript definitions: `otzaria_plugin.d.ts`
+
+
+## כללים נוספים לפיתוח
+
+### כללי קובץ ׳הלכות.md׳
+חודש משפיע רק פעם אחת בודדה: לא ניתן לעצור את השפעתו.
+
+### כלל יסוד
+כל תנאי חייב להכתב בקובץ ׳הלכות.md׳, אין תנאי שנמצא ברדמי ולא בקוד, אין תנאי שנמצא בקוד ולא ב׳הלכות.md׳!
+
+יש לבצע הפרדה מבנית (מבחינה לוגית) בין הגדרת זמני טומאה לזמני פרישה: זמני טומאה רק המשתמש מזין, זמני פרישה רק התוכנה מחשבת.
+
+יש לבצע הפרדה בין חישוב ימי הפרישה: ווסת שאינו קבוע, ווסת קבוע.
+
+משמעות ווסת קבוע, היינו שאירוע הטומאה חזר על עצמו בדיוק במשך 3 פעמים. ווסת זה ממשיך עד לעצירתו, גם כשאין יותר ראייה. עצירה הינה אי-ראייה במשך 3 פעמים, בתנאי שזמן ה"אירוע" לא כלל את היום הרלוונטי.
+
+ווסת שאינו קבוע הוא האירוע הרגיל, וכל פעם מחושב שנפרד ומבוטל לפעם הבאה, אלא שאם הפעם הבאה.,...
