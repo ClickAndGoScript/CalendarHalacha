@@ -1,132 +1,210 @@
-# Claude AI Assistant Guidelines
+# תיעוד פיתוח - לוח שנה עברי
 
-## Project-Specific Instructions
+## סקירה כללית
 
-When working on this Otzaria plugin project, follow these guidelines:
+תוסף זה מספק לוח שנה עברי-לועזי משולב לאוצריא, עם עיצוב Material Design 3 מלא.
 
-### Understanding the Context
+## ארכיטקטורה
 
-1. This is a plugin for Otzaria, a Jewish texts library application
-2. The plugin runs in a WebView with a sandboxed JavaScript environment
-3. Communication with the host app uses the `Otzaria` global object
-4. The project uses Material Design 3 for UI components
+### קבצים עיקריים
 
-### Code Generation
+1. **src/index.html** - מבנה HTML של הלוח
+   - סרגל עליון עם כפתורי ניווט
+   - כותרת חודש/שנה
+   - מתג תצוגה (חודש/שבוע)
+   - גריד של ימים
 
-When generating code:
+2. **src/styles.css** - עיצוב מלא
+   - Material Design 3 tokens
+   - Responsive design
+   - תמיכה ב-RTL
+   - אנימציות ומעברים
 
-1. **Always use TypeScript** with the provided type definitions from `otzaria_plugin.d.ts`
-2. **Check permissions** before using any API - verify they're declared in `manifest.json`
-3. **Handle errors gracefully** - always check `response.success` and handle `response.error`
-4. **Support RTL** - Otzaria's primary language is Hebrew (right-to-left)
-5. **Respect themes** - Listen to theme changes and apply colors from the theme object
+3. **src/main.ts** - לוגיקה ראשית
+   - ניהול state (תאריך נוכחי, נבחר, תצוגה)
+   - חישובי תאריך עברי
+   - רינדור הלוח
+   - טיפול באירועים
+   - אינטגרציה עם Otzaria SDK
 
-### File Organization
-
-- Source code goes in `src/`
-- Entry point (HTML) is referenced in `manifest.json`
-- Keep TypeScript/JavaScript modular and well-organized
-- Use ES modules for better code organization
-
-### Manifest Updates
-
-When modifying `manifest.json`:
-
-1. Validate JSON syntax carefully
-2. Ensure all required fields are present
-3. Add permissions for any new API calls
-4. Update version number for significant changes
-5. Keep `sdkVersion` as `"1.x"` unless SDK changes
-
-### API Usage Patterns
-
-Always use this pattern for API calls:
+### מבנה State
 
 ```typescript
-try {
-  const response = await Otzaria.call('method.name', { params });
-  if (response.success) {
-    // Handle success
-    return response.data;
-  } else {
-    // Handle error
-    console.error(response.error?.message);
-    await Otzaria.call('ui.showError', {
-      message: response.error?.message || 'Unknown error'
-    });
-  }
-} catch (error) {
-  console.error('API call failed:', error);
+let currentDate = new Date();      // החודש המוצג
+let selectedDate = new Date();     // התאריך הנבחר
+let currentView: 'month' | 'week'; // סוג התצוגה
+let theme: any;                    // נושא צבעים מ-Otzaria
+```
+
+### תהליך רינדור
+
+1. `generateCalendarDays()` - יוצר מערך של 42 (חודש) או 7 (שבוע) ימים
+2. לכל יום מחושב:
+   - תאריך גרגוריאני
+   - תאריך עברי (דרך Otzaria API)
+   - סטטוס (היום, נבחר, חודש אחר, שבת)
+   - חגים ומועדים
+3. `createDayCell()` - יוצר DOM element לכל יום
+4. `renderCalendar()` - מרכיב הכל ביחד
+
+## אינטגרציה עם Otzaria
+
+### Events
+
+```typescript
+// טעינה ראשונית
+Otzaria.on('plugin.boot', (bootData) => {
+  applyTheme(bootData.theme);
+  setupEventListeners();
+  renderCalendar();
+});
+
+// שינוי נושא
+Otzaria.on('theme.changed', (themeData) => {
+  applyTheme(themeData);
+});
+```
+
+### API Calls
+
+```typescript
+// קבלת תאריך עברי
+const response = await Otzaria.call('calendar.getJewishDate', {
+  date: gregorianDate.toISOString()
+});
+```
+
+## חישובי תאריך עברי
+
+### המרת מספרים לעברית
+
+```typescript
+function numberToHebrew(num: number): string {
+  // טיפול מיוחד ב-15, 16 (טו, טז)
+  // המרה לפי ספרות אחדות, עשרות, מאות
 }
 ```
 
-### Material Design 3
+### פורמט שנה עברית
 
-When adding Material Design 3:
+```typescript
+function formatHebrewYear(year: number): string {
+  // ה׳תשפ״ה
+  // מוסיף ה׳ לאלפים, גרשיים לסוף
+}
 
-1. Import from CDN or install via npm
-2. Apply theme colors from `bootData.theme.colorScheme`
-3. Use Material components that support RTL
-4. Follow Material Design guidelines for Hebrew typography
+```
 
-### Testing Considerations
+## עיצוב Material Design 3
 
-Remind the user to:
+### Color Scheme
 
-1. Run Otzaria in debug mode for hot reload
-2. Check the browser console for errors
-3. Test with both light and dark themes
-4. Test RTL layout with Hebrew text
-5. Verify all permissions are granted
+הלוח משתמש ב-color tokens מ-Otzaria:
+- `primary` - תאריך נוכחי, כפתורים פעילים
+- `primaryContainer` - תאריך נבחר
+- `secondaryContainer` - שבתות, מועדים
+- `surface` - רקע תאים
+- `onSurface` - טקסט
+- `outline` - גבולות
 
-### Common Pitfalls to Avoid
+### Typography
 
-1. Don't use APIs without declaring permissions
-2. Don't assume LTR layout - always support RTL
-3. Don't ignore theme changes - update UI dynamically
-4. Don't use network access without declaring it in manifest
-5. Don't forget to handle the `plugin.boot` event for initialization
+- Roboto - פונט ראשי
+- Material Icons - אייקונים
 
-### Helpful Reminders
+### Elevation
 
-- The `Otzaria` object is globally available - no import needed
-- All API calls are asynchronous - use `await` or `.then()`
-- Event listeners should be set up early (before `plugin.ready`)
-- Storage is scoped to the plugin - no cross-plugin access
-- Published data can be shared with the host app and other plugins
+- תאים: 0dp (רגיל), 2dp (hover/today)
+- כפתורים: 0dp (flat)
 
-### When Suggesting Changes
+## Responsive Design
 
-1. Explain why the change is needed
-2. Show the impact on permissions (if any)
-3. Mention any manifest updates required
-4. Consider backward compatibility
-5. Suggest testing steps
+### Breakpoints
 
-## Development Workflow
+- Mobile: < 768px
+  - כפתורים קטנים יותר
+  - פונטים מותאמים
+  
+- Compact height: < 600px
+  - תאים קטנים יותר
+  - פחות מידע בכל תא
 
-Typical workflow when assisting:
+### Grid Layout
 
-1. Understand the feature request
-2. Check if permissions are sufficient
-3. Generate/modify code with proper error handling
-4. Update manifest if needed
-5. Suggest testing steps
-6. Remind about hot reload capabilities
+- תצוגת חודש: 7 עמודות × 6 שורות
+- תצוגת שבוע: 7 עמודות × 1 שורה
 
-## Code Style
+## הרחבות עתידיות
 
-- Use modern JavaScript/TypeScript features
-- Prefer `async/await` over callbacks
-- Use descriptive variable names (Hebrew or English)
-- Add comments for complex logic
-- Keep functions small and focused
-- Use TypeScript types from the SDK
+### אפשרויות להוספה
 
-## Security Considerations
+1. **אירועים מותאמים אישית**
+   - שימוש ב-`published_data.write` permission
+   - שמירה ב-plugin storage
+   - סנכרון עם Google Calendar
 
-- Validate all user input
-- Sanitize HTML content before rendering
-- Don't expose sensitive data in console logs
-- Follow principle of least privilege for permissions
-- Be cautious with `published_data` - it's shared globally
+2. **זמני היום**
+   - שימוש ב-`calendar.getDailyTimes`
+   - הצגה בתאים או בפאנל צד
+
+3. **חיפוש תאריך**
+   - דיאלוג קפיצה לתאריך
+   - פירוש קלט עברי/לועזי
+
+4. **הדפסה**
+   - ייצוא PDF
+   - בחירת טווח תאריכים
+
+5. **הגדרות**
+   - בחירת עיר (לזמנים)
+   - ארץ ישראל / חו״ל
+   - סוג לוח (עברי/לועזי/משולב)
+
+## טיפים לפיתוח
+
+### Hot Reload
+
+במצב פיתוח, כל שמירה של קובץ תרענן אוטומטית את התוסף.
+
+### Debugging
+
+```typescript
+console.log('Debug info:', data);
+```
+
+הקונסול זמין ב-DevTools של אוצריא (F12).
+
+### Testing
+
+1. בדוק תצוגת חודש ושבוע
+2. נווט בין חודשים
+3. בחר תאריכים שונים
+4. החלף בין נושא בהיר וכהה
+5. בדוק responsive (שנה גודל חלון)
+
+## בעיות נפוצות
+
+### תאריכים עבריים לא מדויקים
+
+אם ה-API של Otzaria לא זמין, יש fallback פשוט. לדיוק מלא, וודא ש:
+- ההרשאה `calendar.read` מאושרת
+- אוצריא רצה בגרסה 0.9.0+
+
+### עיצוב לא מתעדכן
+
+וודא ש-`applyTheme()` נקרא אחרי כל שינוי state.
+
+### ביצועים
+
+אם הרינדור איטי:
+- שקול caching של תאריכים עבריים
+- השתמש ב-`requestAnimationFrame` לאנימציות
+- הגבל את מספר ה-DOM updates
+
+## תרומה
+
+לפני שליחת PR:
+1. הרץ `npm run build` ווודא שאין שגיאות
+2. בדוק ב-2 נושאים (בהיר/כהה)
+3. בדוק responsive
+4. עדכן README אם צריך

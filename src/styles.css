@@ -1,67 +1,240 @@
-/**
- * Plugin styles with Material Design 3 integration
- */
-
-:root {
-  /* Material Design 3 color tokens - will be set dynamically */
-  --md-sys-color-primary: #6750A4;
-  --md-sys-color-on-primary: #FFFFFF;
-  --md-sys-color-secondary: #625B71;
-  --md-sys-color-on-secondary: #FFFFFF;
-  --md-sys-color-surface: #FFFBFE;
-  --md-sys-color-on-surface: #1C1B1F;
-  --md-sys-color-error: #B3261E;
-  --md-sys-color-on-error: #FFFFFF;
-  
-  /* Typography */
-  --md-sys-typescale-body-font: 'Roboto', sans-serif;
-  --md-sys-typescale-body-size: 16px;
-  --md-sys-typescale-body-line-height: 24px;
-}
-
 * {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
 }
 
 body {
-  font-family: var(--md-sys-typescale-body-font);
-  font-size: var(--md-sys-typescale-body-size);
-  line-height: var(--md-sys-typescale-body-line-height);
-  background-color: var(--md-sys-color-surface);
-  color: var(--md-sys-color-on-surface);
+  font-family: 'Roboto', sans-serif;
   direction: rtl;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
 }
 
 #app {
-  min-height: 100vh;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
 
-.app-header {
-  padding: 16px;
-  background-color: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+.calendar-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
 }
 
-.app-header h1 {
+/* Top Bar */
+.calendar-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 12px;
+  gap: 16px;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-button {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.icon-button:hover {
+  transform: scale(1.05);
+}
+
+.icon-button .material-icons {
   font-size: 24px;
+}
+
+.topbar-title {
+  font-size: 18px;
+  font-weight: 600;
+  flex: 1;
+  text-align: center;
+}
+
+.topbar-view-toggle {
+  display: flex;
+  gap: 4px;
+  border-radius: 20px;
+  padding: 4px;
+}
+
+.toggle-button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.toggle-button.active {
+  font-weight: 600;
+}
+
+/* Calendar Main */
+.calendar-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.day-names {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.day-name {
+  text-align: center;
+  padding: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.calendar-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  overflow: hidden;
+}
+
+.calendar-grid.week-view {
+  grid-template-rows: 1fr;
+}
+
+.calendar-grid.month-view {
+  grid-template-rows: repeat(6, 1fr);
+}
+
+/* Day Cell */
+.day-cell {
+  border-radius: 8px;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: all 0.2s;
+  min-height: 60px;
+}
+
+.day-cell:hover {
+  transform: translateY(-2px);
+}
+
+.day-cell.other-month {
+  opacity: 0.4;
+}
+
+.day-cell.selected {
+  font-weight: bold;
+}
+
+.day-cell.today {
+  border-width: 2px;
+}
+
+.day-cell.shabbat {
+  opacity: 0.9;
+}
+
+.day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.day-gregorian {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.day-hebrew {
+  font-size: 12px;
   font-weight: 500;
 }
 
-.app-main {
+.day-extras {
   flex: 1;
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  overflow: hidden;
 }
 
-/* RTL support */
-[dir="rtl"] {
-  text-align: right;
+.day-event {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
 }
 
-[dir="ltr"] {
-  text-align: left;
+.day-holiday {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+/* Responsive */
+@media (max-height: 600px) {
+  .day-cell {
+    min-height: 50px;
+  }
+  
+  .day-hebrew {
+    font-size: 11px;
+  }
+  
+  .day-gregorian {
+    font-size: 9px;
+  }
+  
+  .day-extras {
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 768px) {
+  .calendar-container {
+    padding: 8px;
+  }
+  
+  .topbar-title {
+    font-size: 16px;
+  }
+  
+  .toggle-button {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
 }
