@@ -1,0 +1,96 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Read version from version.js
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./version.js').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Version from version.js: $VERSION"
+      
+      - name: Validate version format
+        run: |
+          if ! [[ "${{ env.VERSION }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version in version.js must be in format X.Y.Z (e.g., 1.0.0)"
+            exit 1
+          fi
+      
+      - name: Sync version to manifest and package
+        run: npm run sync:version
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Build plugin
+        run: npm run build
+      
+      - name: Package plugin
+        run: |
+          PLUGIN_ID=$(node -p "require('./manifest.json').id")
+          PLUGIN_VERSION=$(node -p "require('./manifest.json').version")
+          OUTPUT_FILE="${PLUGIN_ID}-${PLUGIN_VERSION}.otzplugin"
+          
+          # Create temporary directory
+          TEMP_DIR=$(mktemp -d)
+          
+          # Copy files
+          cp -r src "$TEMP_DIR/"
+          cp manifest.json "$TEMP_DIR/"
+          cp LICENSE "$TEMP_DIR/" 2>/dev/null || true
+          cp TERMS.md "$TEMP_DIR/" 2>/dev/null || true
+          
+          # Create archive
+          cd "$TEMP_DIR"
+          zip -r "../$OUTPUT_FILE" . -x "*.DS_Store" "*/node_modules/*" "*/.git/*"
+          cd -
+          
+          # Move to workspace
+          mv "$TEMP_DIR/../$OUTPUT_FILE" "./$OUTPUT_FILE"
+          
+          echo "PLUGIN_FILE=$OUTPUT_FILE" >> $GITHUB_ENV
+          echo "✅ Created: $OUTPUT_FILE"
+      
+      - name: Create and push tag
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git tag "v${{ env.VERSION }}"
+          git push origin "v${{ env.VERSION }}"
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
+          body: |
+            ## Otzaria Plugin v${{ env.VERSION }}
+            
+            ### Installation
+            1. Download the `.otzplugin` file below
+            2. Open Otzaria
+            3. Navigate to Plugins panel
+            4. Install the downloaded plugin file
+            
+            ### Changes
+            See commit history for details.
+          files: ${{ env.PLUGIN_FILE }}
+          draft: false
+          prerelease: false

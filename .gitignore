@@ -1,0 +1,13 @@
+node_modules/
+*.log
+.DS_Store
+*.otzplugin
+dist/
+build/
+
+# Keep local libraries in src/lib
+!src/lib/
+
+# TypeScript compiled files
+src/*.js
+src/*.js.map

@@ -1,0 +1,33 @@
+{
+  "name": "otzaria-plugin",
+  "version": "1.0.0",
+  "description": "A plugin for the Otzaria application",
+  "main": "src/main.js",
+  "scripts": {
+    "build": "npm run sync:version && npm run build:ts && npm run copy:libs",
+    "build:ts": "tsc",
+    "copy:libs": "npm run copy:material && npm run copy:fonts",
+    "copy:material": "mkdir -p src/lib/material && cp node_modules/material-components-web/dist/material-components-web.min.css src/lib/material/ && cp node_modules/material-components-web/dist/material-components-web.min.js src/lib/material/",
+    "copy:fonts": "mkdir -p src/lib/fonts && cp -r node_modules/@fontsource/roboto/files src/lib/fonts/roboto && cp -r node_modules/material-icons/iconfont src/lib/fonts/material-icons",
+    "watch": "tsc --watch",
+    "dev": "tsc --watch",
+    "postinstall": "npm run copy:libs",
+    "sync:version": "node scripts/sync-version.js",
+    "package": "bash scripts/package.sh",
+    "package:win": "scripts\\package.bat"
+  },
+  "keywords": [
+    "otzaria",
+    "plugin"
+  ],
+  "author": "",
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "material-components-web": "^14.0.0",
+    "@fontsource/roboto": "^5.0.0",
+    "material-icons": "^1.13.12"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
