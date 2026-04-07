@@ -60,6 +60,34 @@
     </div>
   </div>
 
-  <script src="main.ts" type="module"></script>
+<script>
+  // בדיקה: האם אנחנו בדפדפן רגיל (מחוץ לאוצריא)?
+  if (typeof Otzaria === 'undefined') {
+    console.warn("Otzaria original SDK not found. Loading Mock for development...");
+    
+    // יצירת ה-Mock ישירות בזיכרון
+    window.Otzaria = {
+      on: (event, cb) => {
+        if (event === 'plugin.boot') {
+          setTimeout(() => cb({
+            theme: { mode: 'light', colorScheme: { primary: '#1565C0', surface: '#f8f9fa', onSurface: '#1a1a2e', primaryContainer: '#d1e4ff', onPrimaryContainer: '#001d35', secondaryContainer: '#e8f0fe', outlineVariant: '#cbd5e1' } },
+            app: { platform: 'browser' },
+            permissions: ['calendar.read']
+          }), 100);
+        }
+      },
+      call: async (method, payload) => {
+        console.log(`[Mock API Call]: ${method}`, payload);
+        if (method === 'calendar.getJewishDate') {
+          return { success: true, data: { day: 10, month: 7, year: 5785, monthName: 'תשרי' } };
+        }
+        return { success: true, data: {} };
+      }
+    };
+  }
+</script>
+
+<!-- טעינת הקוד הראשי - תמיד הגרסה המקומפלת -->
+<script src="main.js" type="module"></script>
 </body>
 </html>
