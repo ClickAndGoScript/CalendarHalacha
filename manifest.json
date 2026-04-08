@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "com.otzaria.hebrew-calendar",
-  "name": "לוח שנה עברי",
+  "name": "לוח הלכתי",
   "version": "1.0.0",
   "description": "לוח שנה עברי-לועזי משולב עם תצוגת חודש ושבוע, מבוסס Material Design 3",
   "author": "Otzaria",
@@ -20,9 +20,10 @@
   },
   "contributes": {
     "toolTab": {
-      "title": "לוח שנה",
+      "title": "לוח הלכתי",
       "order": 100,
-      "defaultPinned": true
+      "defaultPinned": true,
+      "iconCodepoint": 983685
     }
   }
 }
