@@ -36,3 +36,4 @@ yarn-error.log*
 .cache/
 Otzaria otzaria mdb2-devsh lib-tools_calendar/*
 CalendarHalacha.xml
+log.txt
