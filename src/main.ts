@@ -1,6 +1,7 @@
 /// <reference path="../Otzaria otzaria plugins lib-plugins_sdk/otzaria_plugin.d.ts" />
 
 type CalendarView = 'month' | 'week';
+type CalendarDisplay = 'hebrew' | 'gregorian' | 'combined';
 
 interface HebrewDate {
   day: number;
@@ -55,6 +56,7 @@ interface ThemeData {
 
 interface AppState {
   view: CalendarView;
+  calendarDisplay: CalendarDisplay;
   selectedDate: Date;
   anchorDate: Date;
   theme: ThemeData | null;
@@ -62,6 +64,7 @@ interface AppState {
 
 const state: AppState = {
   view: 'month',
+  calendarDisplay: 'combined',
   selectedDate: stripTime(new Date()),
   anchorDate: startOfMonth(new Date()),
   theme: null,
@@ -90,6 +93,7 @@ let renderSequence = 0;
 let shellRendered = false;
 let listenersAttached = false;
 let initStarted = false;
+let pluginVersion = '1.0.0';
 
 function stripTime(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -124,6 +128,60 @@ function toDateKey(date: Date): string {
     String(date.getDate()).padStart(2, '0'),
   ].join('-');
 }
+
+// ─── המרה מתאריך עברי לגרגוריאני ────────────────────────────────────────────
+
+function _hIsLeap(y: number): boolean { return (7 * y + 1) % 19 < 7; }
+
+function _hElapsed(y: number): number {
+  const mo = Math.floor((235 * y - 234) / 19);
+  const p = 12084 + 13753 * mo;
+  let d = mo * 29 + Math.floor(p / 25920);
+  if ((3 * (d + 1)) % 7 < 3) d++;
+  return d;
+}
+
+function _hYearLen(y: number): number { return _hElapsed(y + 1) - _hElapsed(y); }
+
+function _hDaysInMonth(m: number, y: number): number {
+  if (m === 1 || m === 3 || m === 5 || m === 7 || m === 11) return 30;
+  if (m === 2 || m === 4 || m === 6 || m === 10) return 29;
+  if (m === 8) return _hYearLen(y) % 10 === 5 ? 30 : 29; // חשון
+  if (m === 9) return _hYearLen(y) % 10 === 3 ? 29 : 30; // כסלו
+  if (m === 12) return _hIsLeap(y) ? 30 : 29; // אדר א׳ / אדר
+  if (m === 13) return 29; // אדר ב׳
+  return 0;
+}
+
+function _hMonthsInYear(y: number): number { return _hIsLeap(y) ? 13 : 12; }
+
+function _hDaysBeforeMonth(y: number, m: number): number {
+  let days = 0;
+  if (m >= 7) {
+    for (let i = 7; i < m; i++) days += _hDaysInMonth(i, y);
+  } else {
+    for (let i = 7; i <= _hMonthsInYear(y); i++) days += _hDaysInMonth(i, y);
+    for (let i = 1; i < m; i++) days += _hDaysInMonth(i, y);
+  }
+  return days;
+}
+
+/** ממיר תאריך עברי לאובייקט Date גרגוריאני (חישוב לוקאלי, ללא API). */
+function hebrewToDate(y: number, m: number, d: number): Date | null {
+  if (y < 1 || m < 1 || m > _hMonthsInYear(y) || d < 1 || d > _hDaysInMonth(m, y)) return null;
+  const HEBREW_EPOCH = -1373428; // R.D. של א׳ תשרי שנה א
+  const UNIX_EPOCH_RD = 719163;  // R.D. של 1/1/1970
+  const rd = HEBREW_EPOCH + _hElapsed(y) + _hDaysBeforeMonth(y, m) + d - 1;
+  return new Date((rd - UNIX_EPOCH_RD) * 86400000);
+}
+
+/** מחזיר את מספר הימים בחודש עברי (לצורך בניית תפריט). */
+function hebrewDaysInMonth(m: number, y: number): number { return _hDaysInMonth(m, y); }
+
+/** מחזיר האם שנה עברית עם 13 חודשים. */
+function isHebrewLeapYear(y: number): boolean { return _hIsLeap(y); }
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function toHebrewNumber(value: number): string {
   if (value <= 0) return '';
@@ -307,33 +365,69 @@ function fallbackHebrewDate(date: Date): HebrewDate {
   };
 }
 
-function buildVisibleDates(): Date[] {
+function buildVisibleDates(hebrewMonthStart?: Date, hebrewMonthDays?: number): Date[] {
   if (state.view === 'week') {
     const weekStart = startOfWeek(state.selectedDate);
     return Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
   }
 
-  const monthStart = startOfMonth(state.anchorDate);
-  const gridStart = addDays(monthStart, -monthStart.getDay());
-  return Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
+  const monthStart = (state.calendarDisplay !== 'gregorian' && hebrewMonthStart)
+    ? hebrewMonthStart
+    : startOfMonth(state.anchorDate);
+
+  const firstDay = monthStart.getDay(); // 0=Sunday
+  const daysInMonth = (state.calendarDisplay !== 'gregorian' && hebrewMonthDays)
+    ? hebrewMonthDays
+    : new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+
+  const neededCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+  const gridStart = addDays(monthStart, -firstDay);
+  return Array.from({ length: neededCells }, (_, index) => addDays(gridStart, index));
 }
 
 async function buildCalendarCells(): Promise<CalendarCellData[]> {
-  const visibleDates = buildVisibleDates();
-  const primaryMonth = state.anchorDate.getMonth();
   const today = stripTime(new Date());
+
+  // בלוח עברי/משולב — מוצאים את ה-1 לחודש העברי שב-anchorDate
+  let hebrewMonthStart: Date | undefined;
+  let hebrewMonthDays: number | undefined;
+  let anchorHebrewMonth = -1;
+  let anchorHebrewYear = -1;
+
+  if (state.calendarDisplay !== 'gregorian') {
+    const anchorHebrew = await getHebrewDate(state.anchorDate);
+    anchorHebrewMonth = anchorHebrew.month;
+    anchorHebrewYear = anchorHebrew.year;
+    const first = hebrewToDate(anchorHebrew.year, anchorHebrew.month, 1);
+    if (first) hebrewMonthStart = stripTime(first);
+    hebrewMonthDays = hebrewDaysInMonth(anchorHebrew.month, anchorHebrew.year);
+  }
+
+  const visibleDates = buildVisibleDates(hebrewMonthStart, hebrewMonthDays);
+  const primaryGregMonth = state.anchorDate.getMonth();
 
   const hebrewDates = await Promise.all(visibleDates.map((date) => getHebrewDate(date)));
 
-  return visibleDates.map((date, index) => ({
-    date,
-    hebrew: hebrewDates[index],
-    labels: hebrewDates[index].holidays.slice(0, 2),
-    isToday: isSameDay(date, today),
-    isSelected: isSameDay(date, state.selectedDate),
-    isOutsidePrimaryRange: state.view === 'month' ? date.getMonth() !== primaryMonth : false,
-    isShabbat: hebrewDates[index].isShabbat,
-  }));
+  return visibleDates.map((date, index) => {
+    let isOutside = false;
+    if (state.view === 'month') {
+      if (state.calendarDisplay !== 'gregorian') {
+        isOutside = hebrewDates[index].month !== anchorHebrewMonth ||
+                    hebrewDates[index].year !== anchorHebrewYear;
+      } else {
+        isOutside = date.getMonth() !== primaryGregMonth;
+      }
+    }
+    return {
+      date,
+      hebrew: hebrewDates[index],
+      labels: hebrewDates[index].holidays.slice(0, 2),
+      isToday: isSameDay(date, today),
+      isSelected: isSameDay(date, state.selectedDate),
+      isOutsidePrimaryRange: isOutside,
+      isShabbat: hebrewDates[index].isShabbat,
+    };
+  });
 }
 
 function renderShell(): void {
@@ -346,28 +440,50 @@ function renderShell(): void {
     <section class="calendar-shell">
       <header class="calendar-toolbar">
         <div class="toolbar-side toolbar-side-start">
-          <button class="icon-button" id="nav-next" type="button" aria-label="הבא">
-            <span class="material-icons">chevron_left</span>
+          <div class="view-switch" role="tablist" aria-label="תצוגת לוח">
+            <button class="view-button" id="view-week" data-view="week" type="button" role="tab" aria-selected="false">שבוע</button>
+            <button class="view-button" id="view-month" data-view="month" type="button" role="tab" aria-selected="true">חודש</button>
+          </div>
+        </div>
+
+        <div class="toolbar-nav-group">
+          <button class="icon-button" id="nav-prev" type="button" aria-label="הקודם">
+            <span class="material-icons">chevron_right</span>
           </button>
           <div class="toolbar-title-wrap">
             <h1 class="toolbar-title" id="calendar-title">טוען…</h1>
           </div>
-          <button class="icon-button" id="nav-prev" type="button" aria-label="הקודם">
-            <span class="material-icons">chevron_right</span>
+          <button class="icon-button" id="nav-next" type="button" aria-label="הבא">
+            <span class="material-icons">chevron_left</span>
           </button>
-        </div>
-
-        <div class="toolbar-actions">
-          <button class="icon-button subtle-button" id="jump-today" type="button" aria-label="היום">
-            <span class="material-icons">today</span>
-          </button>
-          <button class="pill-button is-active" id="today-button" type="button">היום</button>
         </div>
 
         <div class="toolbar-side toolbar-side-end">
-          <div class="view-switch" role="tablist" aria-label="תצוגת לוח">
-            <button class="view-button" id="view-week" data-view="week" type="button" role="tab" aria-selected="false">שבוע</button>
-            <button class="view-button" id="view-month" data-view="month" type="button" role="tab" aria-selected="true">חודש</button>
+          <button class="icon-button subtle-button" id="jump-today" type="button" aria-label="קפוץ לתאריך">
+            <span class="material-icons">today</span>
+          </button>
+          <button class="pill-button is-active" id="today-button" type="button">היום</button>
+          <div class="menu-anchor" id="settings-menu-anchor">
+            <button class="icon-button subtle-button" id="settings-btn" type="button" aria-label="הגדרות ועוד" aria-haspopup="true" aria-expanded="false">
+              <span class="material-icons">more_vert</span>
+            </button>
+            <div class="dropdown-menu" id="settings-menu" hidden>
+              <div class="menu-section-label">תצוגת לוח</div>
+              <div class="menu-switch-group">
+                <button class="menu-display-btn" data-display="hebrew" type="button">עברי</button>
+                <button class="menu-display-btn is-active" data-display="combined" type="button">משולב</button>
+                <button class="menu-display-btn" data-display="gregorian" type="button">לועזי</button>
+              </div>
+              <div class="menu-divider"></div>
+              <button class="menu-item" id="menu-about" type="button">
+                <span class="material-icons menu-item-icon">info_outline</span>
+                אודות
+              </button>
+              <button class="menu-item" id="menu-feedback" type="button">
+                <span class="material-icons menu-item-icon">feedback</span>
+                שלח משוב
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -375,6 +491,69 @@ function renderShell(): void {
       <div class="weekday-row" id="weekday-row"></div>
       <div class="calendar-grid" id="calendar-grid" aria-live="polite"></div>
     </section>
+
+    <div class="dialog-backdrop" id="about-dialog" hidden>
+      <div class="dialog" role="dialog" aria-modal="true" aria-label="אודות">
+        <h2 class="dialog-title">לוח שנה עברי</h2>
+        <div class="about-body">
+          <p class="about-version">גרסה <span id="about-version-text"></span></p>
+          <p class="about-desc">תוסף ללוח שנה עברי-לועזי משולב לאפליקציית אוצריא.</p>
+        </div>
+        <div class="dialog-actions">
+          <button class="dialog-btn dialog-btn-confirm" id="about-close" type="button">סגור</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dialog-backdrop" id="feedback-dialog" hidden>
+      <div class="dialog" role="dialog" aria-modal="true" aria-label="שלח משוב">
+        <h2 class="dialog-title">שלח משוב</h2>
+        <p class="feedback-email-display" id="feedback-email-display"></p>
+        <div class="dialog-panel">
+          <div class="feedback-msg-row">
+            <label for="feedback-text" class="feedback-label">הודעה</label>
+            <textarea id="feedback-text" class="feedback-textarea" rows="5" placeholder="כתוב את המשוב שלך כאן…"></textarea>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button class="dialog-btn dialog-btn-cancel" id="feedback-cancel" type="button">ביטול</button>
+          <button class="dialog-btn dialog-btn-confirm" id="feedback-send" type="button" disabled title="בקרוב">שלח</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dialog-backdrop" id="jump-dialog" hidden>
+      <div class="dialog" role="dialog" aria-modal="true" aria-label="קפוץ לתאריך">
+        <h2 class="dialog-title">קפוץ לתאריך</h2>
+        <div class="dialog-tabs" role="tablist">
+          <button class="dialog-tab is-active" data-tab="gregorian" type="button" role="tab">לועזי</button>
+          <button class="dialog-tab" data-tab="hebrew" type="button" role="tab">עברי</button>
+        </div>
+        <div id="dialog-gregorian-panel" class="dialog-panel">
+          <input type="date" id="gregorian-date-input" class="date-input" />
+        </div>
+        <div id="dialog-hebrew-panel" class="dialog-panel" hidden>
+          <div class="hebrew-inputs">
+            <div class="hebrew-field">
+              <label for="hday-input">יום</label>
+              <input type="number" id="hday-input" class="hnum-input" min="1" max="30" placeholder="יג" />
+            </div>
+            <div class="hebrew-field">
+              <label for="hmonth-select">חודש</label>
+              <select id="hmonth-select" class="hselect"></select>
+            </div>
+            <div class="hebrew-field">
+              <label for="hyear-input">שנה</label>
+              <input type="number" id="hyear-input" class="hnum-input" min="1" max="9999" placeholder="תשפז" />
+            </div>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button class="dialog-btn dialog-btn-cancel" id="dialog-cancel" type="button">ביטול</button>
+          <button class="dialog-btn dialog-btn-confirm" id="dialog-confirm" type="button">קפוץ</button>
+        </div>
+      </div>
+    </div>
   `;
   shellRendered = true;
 
@@ -394,26 +573,224 @@ function attachShellListeners(): void {
   document.getElementById('nav-prev')?.addEventListener('click', () => movePeriod(-1));
   document.getElementById('nav-next')?.addEventListener('click', () => movePeriod(1));
   document.getElementById('today-button')?.addEventListener('click', jumpToToday);
-  document.getElementById('jump-today')?.addEventListener('click', jumpToToday);
+  document.getElementById('jump-today')?.addEventListener('click', openJumpDialog);
 
   document.querySelectorAll<HTMLButtonElement>('.view-button').forEach((button) => {
     button.addEventListener('click', () => {
       const nextView = button.dataset.view as CalendarView;
       if (nextView === state.view) return;
-
       state.view = nextView;
-      if (nextView === 'month') {
-        state.anchorDate = startOfMonth(state.selectedDate);
-      }
+      if (nextView === 'month') state.anchorDate = startOfMonth(state.selectedDate);
       void renderCalendar();
     });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.menu-display-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      const nextDisplay = button.dataset.display as CalendarDisplay;
+      if (nextDisplay === state.calendarDisplay) return;
+      state.calendarDisplay = nextDisplay;
+      updateToolbarSelection();
+      void renderCalendar();
+    });
+  });
+
+  // ─── תפריט הגדרות (3 נקודות) ─────────────────────────────────────────────
+  document.getElementById('settings-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSettingsMenu();
+  });
+
+  // סגירת תפריט בלחיצה מחוץ אליו
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('settings-menu');
+    const anchor = document.getElementById('settings-menu-anchor');
+    if (menu && !menu.hidden && anchor && !anchor.contains(e.target as Node)) {
+      closeSettingsMenu();
+    }
+  });
+
+  document.getElementById('menu-about')?.addEventListener('click', () => {
+    closeSettingsMenu();
+    openAboutDialog();
+  });
+
+  document.getElementById('menu-feedback')?.addEventListener('click', () => {
+    closeSettingsMenu();
+    // בדיקת זמינות אימייל לפני פתיחת הדיאלוג
+    Otzaria.call<{ email?: string }>('app.getUserEmail').then((response) => {
+      const email = response.success ? (response.data?.email ?? '') : '';
+      openFeedbackDialog(email);
+    }).catch(() => openFeedbackDialog(''));
+  });
+
+  // ─── דיאלוג אודות ────────────────────────────────────────────────────────
+  const aboutBackdrop = document.getElementById('about-dialog')!;
+  aboutBackdrop.addEventListener('click', (e) => {
+    if (e.target === aboutBackdrop) closeAboutDialog();
+  });
+  document.getElementById('about-close')?.addEventListener('click', closeAboutDialog);
+  aboutBackdrop.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAboutDialog();
+  });
+
+  // ─── דיאלוג משוב ─────────────────────────────────────────────────────────
+  const feedbackBackdrop = document.getElementById('feedback-dialog')!;
+  feedbackBackdrop.addEventListener('click', (e) => {
+    if (e.target === feedbackBackdrop) closeFeedbackDialog();
+  });
+  document.getElementById('feedback-cancel')?.addEventListener('click', closeFeedbackDialog);
+  feedbackBackdrop.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeFeedbackDialog();
+  });
+
+  // ─── דיאלוג קפיצה לתאריך ───────────────────────────────────────────────
+  const backdrop = document.getElementById('jump-dialog')!;
+
+  // סגירה בלחיצה על הרקע
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) closeJumpDialog();
+  });
+
+  document.getElementById('dialog-cancel')?.addEventListener('click', closeJumpDialog);
+
+  // מעבר בין כרטיסיות
+  document.querySelectorAll<HTMLButtonElement>('.dialog-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.dialog-tab').forEach((t) => {
+        t.classList.remove('is-active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      tab.classList.add('is-active');
+      tab.setAttribute('aria-selected', 'true');
+
+      const isHebrew = tab.dataset.tab === 'hebrew';
+      const gregPanel = document.getElementById('dialog-gregorian-panel')!;
+      const hebPanel = document.getElementById('dialog-hebrew-panel')!;
+      gregPanel.hidden = isHebrew;
+      hebPanel.hidden = !isHebrew;
+    });
+  });
+
+  // עדכון מקסימום ימים כשמשנים חודש/שנה
+  function updateHebrewDayMax() {
+    const y = parseInt((document.getElementById('hyear-input') as HTMLInputElement).value, 10);
+    const m = parseInt((document.getElementById('hmonth-select') as HTMLSelectElement).value, 10);
+    const dayInput = document.getElementById('hday-input') as HTMLInputElement;
+    if (y > 0 && m > 0) {
+      dayInput.max = String(hebrewDaysInMonth(m, y));
+    }
+    populateHebrewMonths(y);
+  }
+
+  document.getElementById('hyear-input')?.addEventListener('input', updateHebrewDayMax);
+  document.getElementById('hmonth-select')?.addEventListener('change', updateHebrewDayMax);
+
+  document.getElementById('dialog-confirm')?.addEventListener('click', () => {
+    const activeTab = document.querySelector<HTMLButtonElement>('.dialog-tab.is-active');
+    const tab = activeTab?.dataset.tab ?? 'gregorian';
+
+    let targetDate: Date | null = null;
+
+    if (tab === 'gregorian') {
+      const val = (document.getElementById('gregorian-date-input') as HTMLInputElement).value;
+      if (val) {
+        const parts = val.split('-').map(Number);
+        if (parts.length === 3) {
+          // בניה לוקאלית (ללא שינוי timezone)
+          targetDate = new Date(parts[0]!, parts[1]! - 1, parts[2]!);
+        }
+      }
+    } else {
+      const y = parseInt((document.getElementById('hyear-input') as HTMLInputElement).value, 10);
+      const m = parseInt((document.getElementById('hmonth-select') as HTMLSelectElement).value, 10);
+      const d = parseInt((document.getElementById('hday-input') as HTMLInputElement).value, 10);
+      if (y > 0 && m > 0 && d > 0) {
+        targetDate = hebrewToDate(y, m, d);
+      }
+    }
+
+    if (targetDate && !Number.isNaN(targetDate.getTime())) {
+      state.selectedDate = stripTime(targetDate);
+      state.anchorDate = startOfMonth(targetDate);
+      void renderCalendar();
+      closeJumpDialog();
+    }
+  });
+
+  // Enter במקום לחיצה על אישור
+  backdrop.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('dialog-confirm')?.click();
+    if (e.key === 'Escape') closeJumpDialog();
   });
 
   listenersAttached = true;
 }
 
+function toggleSettingsMenu(): void {
+  const menu = document.getElementById('settings-menu');
+  const btn = document.getElementById('settings-btn');
+  if (!menu) return;
+  const willOpen = menu.hidden;
+  menu.hidden = !willOpen;
+  btn?.setAttribute('aria-expanded', String(willOpen));
+}
+
+function closeSettingsMenu(): void {
+  const menu = document.getElementById('settings-menu');
+  const btn = document.getElementById('settings-btn');
+  if (menu) menu.hidden = true;
+  btn?.setAttribute('aria-expanded', 'false');
+}
+
+function openAboutDialog(): void {
+  const dialog = document.getElementById('about-dialog');
+  if (!dialog) return;
+  const versionEl = document.getElementById('about-version-text');
+  if (versionEl) versionEl.textContent = pluginVersion;
+  dialog.hidden = false;
+}
+
+function closeAboutDialog(): void {
+  const dialog = document.getElementById('about-dialog');
+  if (dialog) dialog.hidden = true;
+}
+
+function openFeedbackDialog(email: string): void {
+  if (!email) {
+    // אין אימייל — לא ניתן לשלוח משוב
+    void Otzaria.call('ui.showMessage', {
+      message: 'כדי לשלוח משוב, יש להגדיר כתובת אימייל בהגדרות אוצריא.',
+      type: 'warning',
+    });
+    return;
+  }
+
+  const dialog = document.getElementById('feedback-dialog');
+  if (!dialog) return;
+
+  const emailDisplay = document.getElementById('feedback-email-display');
+  if (emailDisplay) emailDisplay.textContent = `משוב יישלח מ: ${email}`;
+
+  const textArea = document.getElementById('feedback-text') as HTMLTextAreaElement | null;
+  if (textArea) textArea.value = '';
+
+  dialog.hidden = false;
+  textArea?.focus();
+}
+
+function closeFeedbackDialog(): void {
+  const dialog = document.getElementById('feedback-dialog');
+  if (dialog) dialog.hidden = true;
+}
+
 function movePeriod(direction: 1 | -1): void {
   if (state.view === 'month') {
+    if (state.calendarDisplay !== 'gregorian') {
+      // ניווט לפי חודש עברי — async
+      void moveByHebrewMonth(direction);
+      return;
+    }
     state.anchorDate = addMonths(state.anchorDate, direction);
   } else {
     const nextSelected = addDays(state.selectedDate, direction * 7);
@@ -424,6 +801,21 @@ function movePeriod(direction: 1 | -1): void {
   renderCalendar();
 }
 
+async function moveByHebrewMonth(direction: 1 | -1): Promise<void> {
+  const anchorHebrew = await getHebrewDate(state.anchorDate);
+  let { year, month } = anchorHebrew;
+
+  const months = isHebrewLeapYear(year) ? 13 : 12;
+  month += direction;
+  if (month > months) { month = 1; year++; }
+  if (month < 1) { year--; month = isHebrewLeapYear(year) ? 13 : 12; }
+
+  const newStart = hebrewToDate(year, month, 1);
+  if (newStart) state.anchorDate = newStart;
+
+  void renderCalendar();
+}
+
 function jumpToToday(): void {
   const today = stripTime(new Date());
   state.selectedDate = today;
@@ -431,9 +823,63 @@ function jumpToToday(): void {
   renderCalendar();
 }
 
+const HEBREW_MONTH_LABELS = [
+  { m: 7, name: 'תשרי' }, { m: 8, name: 'חשון' }, { m: 9, name: 'כסלו' },
+  { m: 10, name: 'טבת' }, { m: 11, name: 'שבט' }, { m: 12, name: 'אדר א׳' },
+  { m: 13, name: 'אדר ב׳' }, { m: 1, name: 'ניסן' }, { m: 2, name: 'אייר' },
+  { m: 3, name: 'סיון' }, { m: 4, name: 'תמוז' }, { m: 5, name: 'אב' }, { m: 6, name: 'אלול' },
+];
+
+function populateHebrewMonths(year: number): void {
+  const select = document.getElementById('hmonth-select') as HTMLSelectElement | null;
+  if (!select) return;
+  const currentVal = select.value;
+  const leap = isHebrewLeapYear(year);
+  select.innerHTML = HEBREW_MONTH_LABELS
+    .filter(({ m }) => m !== 13 || leap) // חודש יג רק בשנה מעוברת
+    .map(({ m, name }) => {
+      // בשנה רגילה חודש 12 = אדר (לא אדר א׳)
+      const label = (!leap && m === 12) ? 'אדר' : name;
+      return `<option value="${m}">${label}</option>`;
+    })
+    .join('');
+  if (currentVal) select.value = currentVal;
+}
+
+function openJumpDialog(): void {
+  const dialog = document.getElementById('jump-dialog');
+  if (!dialog) return;
+
+  // אתחול ערכי ברירת-מחדל לתאריך הנוכחי הנבחר
+  const d = state.selectedDate;
+  const isoStr = toDateKey(d);
+  const gregInput = document.getElementById('gregorian-date-input') as HTMLInputElement | null;
+  if (gregInput) gregInput.value = isoStr;
+
+  // קרוב לשנה העברית הנוכחית (ניחוש גס)
+  const approxYear = d.getFullYear() + 3760;
+  const hyearInput = document.getElementById('hyear-input') as HTMLInputElement | null;
+  if (hyearInput) hyearInput.value = String(approxYear);
+  populateHebrewMonths(approxYear);
+
+  dialog.hidden = false;
+  (gregInput ?? document.getElementById('hyear-input'))?.focus();
+}
+
+function closeJumpDialog(): void {
+  const dialog = document.getElementById('jump-dialog');
+  if (dialog) dialog.hidden = true;
+}
+
 function updateToolbarSelection(): void {
   document.querySelectorAll<HTMLButtonElement>('.view-button').forEach((button) => {
     const active = button.dataset.view === state.view;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.menu-display-btn').forEach((button) => {
+    const active = button.dataset.display === state.calendarDisplay;
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-selected', String(active));
   });
@@ -457,11 +903,17 @@ function createDayCell(cell: CalendarCellData): HTMLElement {
   if (cell.labels.length > 0 || cell.isShabbat) button.classList.add('is-special');
 
   button.innerHTML = `
+    ${state.calendarDisplay !== 'gregorian' ? `
     <div class="cell-corner cell-corner-hebrew">
       <span class="cell-hebrew-day">${toHebrewNumber(cell.hebrew.day)}</span>
       ${cell.hebrew.day === 1 ? `<span class="cell-month-name">${cell.hebrew.monthName}</span>` : ''}
-    </div>
-    <div class="cell-corner cell-corner-gregorian">${cell.date.getDate()}</div>
+    </div>` : `
+    <div class="cell-corner cell-corner-hebrew">
+      <span class="cell-hebrew-day">${cell.date.getDate()}</span>
+      ${cell.date.getDate() === 1 ? `<span class="cell-month-name">${GREGORIAN_MONTH_FORMATTER.format(cell.date)}</span>` : ''}
+    </div>`}
+    ${state.calendarDisplay === 'combined' ? `
+    <div class="cell-corner cell-corner-gregorian">${cell.date.getDate()}</div>` : ''}
     <div class="cell-body">
       ${cell.labels.map((label) => `<div class="cell-label cell-label-${label.kind}">${label.text}</div>`).join('')}
     </div>
@@ -567,7 +1019,8 @@ document.addEventListener('DOMContentLoaded', () => {
   renderShell();
 });
 
-Otzaria.on('plugin.boot', async (bootData: { theme: ThemeData }) => {
+Otzaria.on('plugin.boot', async (bootData: { plugin?: { version?: string }; theme: ThemeData }) => {
+  if (bootData.plugin?.version) pluginVersion = bootData.plugin.version;
   await initializeApp(bootData.theme);
 });
 

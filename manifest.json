@@ -11,7 +11,8 @@
   "sdkVersion": "1.x",
   "permissions": [
     "calendar.read",
-    "ui.feedback"
+    "ui.feedback",
+    "app.user_email.read"
   ],
   "network": {
     "enabled": false,
