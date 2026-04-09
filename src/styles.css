@@ -726,3 +726,113 @@ textarea {
     font-size: 0.66rem;
   }
 }
+
+/* ─── מסך הגנת סיסמא ──────────────────────────────────────────────────────── */
+
+.password-wall {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  z-index: 9999;
+}
+
+.password-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: min(360px, calc(100% - 48px));
+  padding: 36px 32px 32px;
+  background: var(--surface);
+  border: 1px solid var(--outline-variant);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+.password-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.password-icon .material-icons {
+  font-size: 28px;
+}
+
+.password-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--on-surface);
+  text-align: center;
+}
+
+.password-subtitle {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--on-surface-variant);
+  text-align: center;
+}
+
+.password-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.password-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--outline);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--on-surface);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s;
+  text-align: right;
+}
+
+.password-input:focus {
+  border-color: var(--primary);
+}
+
+.password-error {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #b91c1c 12%, var(--surface));
+  color: #b91c1c;
+  font-size: 0.84rem;
+  text-align: center;
+}
+
+.password-btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.password-btn:hover {
+  opacity: 0.9;
+}
+
+.password-btn:active {
+  opacity: 0.8;
+}

@@ -94,6 +94,127 @@ let shellRendered = false;
 let listenersAttached = false;
 let initStarted = false;
 let pluginVersion = '1.0.0';
+let isAuthenticated = false;
+
+const STORAGE_KEY_PASSWORD = 'passwordHash';
+
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + 'otzaria-calendar-salt');
+  const buffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function getSavedPasswordHash(): Promise<string | null> {
+  try {
+    const response = await Otzaria.call<string | null>('storage.get', { key: STORAGE_KEY_PASSWORD });
+    return (response.success && response.data) ? response.data : null;
+  } catch {
+    return null;
+  }
+}
+
+async function savePasswordHash(hash: string): Promise<void> {
+  await Otzaria.call('storage.set', { key: STORAGE_KEY_PASSWORD, value: hash });
+}
+
+function renderPasswordScreen(mode: 'set' | 'verify'): void {
+  const app = document.getElementById('app');
+  if (!app) return;
+
+  const title = mode === 'set' ? 'הגדרת סיסמא' : 'הזן סיסמא';
+  const subtitle = mode === 'set'
+    ? 'הגדר סיסמא לאבטחת המידע האישי שבתוסף'
+    : 'הזן את הסיסמא כדי לצפות בתוסף';
+  const btnLabel = mode === 'set' ? 'הגדר סיסמא' : 'כניסה';
+  const confirmField = mode === 'set'
+    ? `<input type="password" id="password-confirm" class="password-input" placeholder="אימות סיסמא" autocomplete="new-password" />`
+    : '';
+
+  app.innerHTML = `
+    <div class="password-wall">
+      <div class="password-card">
+        <div class="password-icon">
+          <span class="material-icons">lock</span>
+        </div>
+        <h2 class="password-title">${title}</h2>
+        <p class="password-subtitle">${subtitle}</p>
+        <div class="password-fields">
+          <input type="password" id="password-input" class="password-input"
+            placeholder="סיסמא"
+            autocomplete="${mode === 'set' ? 'new-password' : 'current-password'}" />
+          ${confirmField}
+        </div>
+        <div class="password-error" id="password-error" hidden></div>
+        <button class="password-btn" id="password-submit" type="button">${btnLabel}</button>
+      </div>
+    </div>
+  `;
+
+  setTimeout(() => {
+    (document.getElementById('password-input') as HTMLInputElement | null)?.focus();
+  }, 50);
+
+  document.getElementById('password-submit')?.addEventListener('click', () => {
+    void handlePasswordSubmit(mode);
+  });
+
+  app.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') void handlePasswordSubmit(mode);
+  });
+}
+
+function showPasswordError(msg: string): void {
+  const el = document.getElementById('password-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+async function handlePasswordSubmit(mode: 'set' | 'verify'): Promise<void> {
+  const input = document.getElementById('password-input') as HTMLInputElement | null;
+  const password = input?.value ?? '';
+
+  if (!password) {
+    showPasswordError('יש להזין סיסמא');
+    return;
+  }
+
+  if (mode === 'set') {
+    const confirm = (document.getElementById('password-confirm') as HTMLInputElement | null)?.value ?? '';
+    if (password !== confirm) {
+      showPasswordError('הסיסמאות אינן תואמות');
+      return;
+    }
+    if (password.length < 4) {
+      showPasswordError('הסיסמא חייבת להכיל לפחות 4 תווים');
+      return;
+    }
+    const hash = await hashPassword(password);
+    await savePasswordHash(hash);
+    isAuthenticated = true;
+    launchMainApp();
+  } else {
+    const savedHash = await getSavedPasswordHash();
+    const hash = await hashPassword(password);
+    if (hash === savedHash) {
+      isAuthenticated = true;
+      launchMainApp();
+    } else {
+      showPasswordError('סיסמא שגויה');
+      if (input) { input.value = ''; input.focus(); }
+    }
+  }
+}
+
+function launchMainApp(): void {
+  shellRendered = false;
+  listenersAttached = false;
+  renderShell();
+  void initializeState().then(() => renderCalendar());
+}
 
 function stripTime(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -1013,7 +1134,7 @@ async function tryLoadThemeFromHost(): Promise<void> {
 
 async function initializeApp(bootTheme?: ThemeData): Promise<void> {
   if (initStarted) {
-    if (bootTheme) {
+    if (bootTheme && isAuthenticated) {
       applyTheme(bootTheme);
       await initializeState();
       await renderCalendar();
@@ -1022,7 +1143,6 @@ async function initializeApp(bootTheme?: ThemeData): Promise<void> {
   }
 
   initStarted = true;
-  renderShell();
 
   if (bootTheme) {
     applyTheme(bootTheme);
@@ -1030,13 +1150,16 @@ async function initializeApp(bootTheme?: ThemeData): Promise<void> {
     await tryLoadThemeFromHost();
   }
 
-  await initializeState();
-  await renderCalendar();
+  const savedHash = await getSavedPasswordHash();
+  if (!savedHash) {
+    renderPasswordScreen('set');
+  } else {
+    renderPasswordScreen('verify');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  // רק ציור ה-shell — ה-API נקרא רק אחרי plugin.boot כשה-SDK מוכן
-  renderShell();
+  // ה-shell יוצג רק לאחר אימות סיסמא — כאן לא מציגים כלום
 });
 
 Otzaria.on('plugin.boot', async (bootData: { plugin?: { version?: string }; theme: ThemeData }) => {

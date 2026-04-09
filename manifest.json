@@ -13,7 +13,9 @@
     "calendar.read",
     "ui.feedback",
     "app.user_email.read",
-    "feedback.send_email"
+    "feedback.send_email",
+    "plugin.storage.read",
+    "plugin.storage.write"
   ],
   "network": {
     "enabled": false,
