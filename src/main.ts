@@ -98,6 +98,10 @@ let isAuthenticated = false;
 
 const STORAGE_KEY_PASSWORD = 'passwordHash';
 
+// מצב פיתוח: כשהתוסף לא ארוז, Otzaria טוען אותו מהמערכת-קבצים (file:).
+// בגרסה ארוזה (פרודקשן) משתמש ב-scheme פנימי ולא ב-file:.
+const IS_DEV_MODE = location.protocol === 'file:';
+
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(password + 'otzaria-calendar-salt');
@@ -1148,6 +1152,12 @@ async function initializeApp(bootTheme?: ThemeData): Promise<void> {
     applyTheme(bootTheme);
   } else {
     await tryLoadThemeFromHost();
+  }
+
+  if (IS_DEV_MODE) {
+    isAuthenticated = true;
+    launchMainApp();
+    return;
   }
 
   const savedHash = await getSavedPasswordHash();
