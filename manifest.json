@@ -12,7 +12,8 @@
   "permissions": [
     "calendar.read",
     "ui.feedback",
-    "app.user_email.read"
+    "app.user_email.read",
+    "feedback.send_email"
   ],
   "network": {
     "enabled": false,

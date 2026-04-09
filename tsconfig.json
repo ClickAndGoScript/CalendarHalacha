@@ -14,7 +14,7 @@
   },
   "include": [
     "src/**/*",
-    "Otzaria otzaria plugins lib-plugins_sdk/otzaria_plugin.d.ts"
+    "../otzaria/lib/plugins/sdk/otzaria_plugin.d.ts"
   ],
   "exclude": ["node_modules"]
 }

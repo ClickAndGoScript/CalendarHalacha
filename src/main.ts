@@ -1,4 +1,4 @@
-/// <reference path="../Otzaria otzaria plugins lib-plugins_sdk/otzaria_plugin.d.ts" />
+/// <reference path="../../otzaria/lib/plugins/sdk/otzaria_plugin.d.ts" />
 
 type CalendarView = 'month' | 'week';
 type CalendarDisplay = 'hebrew' | 'gregorian' | 'combined';
@@ -517,7 +517,7 @@ function renderShell(): void {
         </div>
         <div class="dialog-actions">
           <button class="dialog-btn dialog-btn-cancel" id="feedback-cancel" type="button">ביטול</button>
-          <button class="dialog-btn dialog-btn-confirm" id="feedback-send" type="button" disabled title="בקרוב">שלח</button>
+          <button class="dialog-btn dialog-btn-confirm" id="feedback-send" type="button">שלח</button>
         </div>
       </div>
     </div>
@@ -640,6 +640,26 @@ function attachShellListeners(): void {
     if (e.target === feedbackBackdrop) closeFeedbackDialog();
   });
   document.getElementById('feedback-cancel')?.addEventListener('click', closeFeedbackDialog);
+  document.getElementById('feedback-send')?.addEventListener('click', async () => {
+    const textArea = document.getElementById('feedback-text') as HTMLTextAreaElement | null;
+    const body = textArea?.value.trim() ?? '';
+    if (!body) {
+      await Otzaria.call('ui.showMessage', { message: 'יש למלא הודעה לפני השליחה' });
+      return;
+    }
+    const response = await Otzaria.call('feedback.sendEmail', {
+      to: 'click.go.script@gmail.com',
+      subject: 'משוב - לוח הלכתי',
+      body,
+      includeSystemInfo: true,
+    });
+    if (response.success) {
+      closeFeedbackDialog();
+      await Otzaria.call('ui.showSuccess', { message: 'המשוב נשלח בהצלחה' });
+    } else {
+      await Otzaria.call('ui.showError', { message: 'שליחת המשוב נכשלה. נסה שנית.' });
+    }
+  });
   feedbackBackdrop.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeFeedbackDialog();
   });
