@@ -343,6 +343,32 @@ function toHebrewNumber(value: number): string {
   return output;
 }
 
+const HEBREW_LETTER_VALUES: Record<string, number> = {
+  'א': 1, 'ב': 2, 'ג': 3, 'ד': 4, 'ה': 5, 'ו': 6, 'ז': 7, 'ח': 8, 'ט': 9,
+  'י': 10, 'כ': 20, 'ך': 20, 'ל': 30, 'מ': 40, 'ם': 40, 'נ': 50, 'ן': 50,
+  'ס': 60, 'ע': 70, 'פ': 80, 'ף': 80, 'צ': 90, 'ץ': 90,
+  'ק': 100, 'ר': 200, 'ש': 300, 'ת': 400,
+};
+
+/** ממיר קלט מספרי או גימטריה ("תשפז", "ה'תשפ"ז", "י"ג") למספר. */
+function parseHebrewNumber(input: string): number {
+  if (!input) return NaN;
+  const trimmed = input.trim();
+  // מספר רגיל
+  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  // מסירים גרשיים/גרשים/רווחים ואות תחילית ה' של אלפים
+  let cleaned = trimmed.replace(/["'״׳\s]/g, '');
+  // אם מתחיל ב-ה ואחרי יש עוד אותיות — מסירים אותה (אלפי השנים)
+  if (cleaned.startsWith('ה') && cleaned.length > 1) cleaned = cleaned.slice(1);
+  let total = 0;
+  for (const ch of cleaned) {
+    const v = HEBREW_LETTER_VALUES[ch];
+    if (v === undefined) return NaN;
+    total += v;
+  }
+  return total > 0 ? total : NaN;
+}
+
 function formatHebrewYear(year: number): string {
   const reduced = year % 1000;
   const text = toHebrewNumber(reduced);
@@ -648,7 +674,7 @@ function renderShell(): void {
     </div>
 
     <div class="dialog-backdrop" id="jump-dialog" hidden>
-      <div class="dialog" role="dialog" aria-modal="true" aria-label="קפוץ לתאריך">
+      <div class="dialog dialog-compact" role="dialog" aria-modal="true" aria-label="קפוץ לתאריך">
         <h2 class="dialog-title">קפוץ לתאריך</h2>
         <div class="dialog-tabs" role="tablist">
           <button class="dialog-tab is-active" data-tab="gregorian" type="button" role="tab">לועזי</button>
@@ -661,7 +687,7 @@ function renderShell(): void {
           <div class="hebrew-inputs">
             <div class="hebrew-field">
               <label for="hday-input">יום</label>
-              <input type="number" id="hday-input" class="hnum-input" min="1" max="30" placeholder="יג" />
+              <input type="text" id="hday-input" class="hnum-input" placeholder="יג" inputmode="text" />
             </div>
             <div class="hebrew-field">
               <label for="hmonth-select">חודש</label>
@@ -669,7 +695,7 @@ function renderShell(): void {
             </div>
             <div class="hebrew-field">
               <label for="hyear-input">שנה</label>
-              <input type="number" id="hyear-input" class="hnum-input" min="1" max="9999" placeholder="תשפז" />
+              <input type="text" id="hyear-input" class="hnum-input" placeholder="תשפז" inputmode="text" />
             </div>
           </div>
         </div>
@@ -819,13 +845,10 @@ function attachShellListeners(): void {
 
   // עדכון מקסימום ימים כשמשנים חודש/שנה
   function updateHebrewDayMax() {
-    const y = parseInt((document.getElementById('hyear-input') as HTMLInputElement).value, 10);
+    let y = parseHebrewNumber((document.getElementById('hyear-input') as HTMLInputElement).value);
+    if (y > 0 && y < 1000) y += 5000;
     const m = parseInt((document.getElementById('hmonth-select') as HTMLSelectElement).value, 10);
-    const dayInput = document.getElementById('hday-input') as HTMLInputElement;
-    if (y > 0 && m > 0) {
-      dayInput.max = String(hebrewDaysInMonth(m, y));
-    }
-    populateHebrewMonths(y);
+    if (y > 0) populateHebrewMonths(y);
   }
 
   document.getElementById('hyear-input')?.addEventListener('input', updateHebrewDayMax);
@@ -835,31 +858,30 @@ function attachShellListeners(): void {
     const activeTab = document.querySelector<HTMLButtonElement>('.dialog-tab.is-active');
     const tab = activeTab?.dataset.tab ?? 'gregorian';
 
-    let targetDate: Date | null = null;
-
     if (tab === 'gregorian') {
       const val = (document.getElementById('gregorian-date-input') as HTMLInputElement).value;
       if (val) {
         const parts = val.split('-').map(Number);
         if (parts.length === 3) {
-          // בניה לוקאלית (ללא שינוי timezone)
-          targetDate = new Date(parts[0]!, parts[1]! - 1, parts[2]!);
+          const targetDate = new Date(parts[0]!, parts[1]! - 1, parts[2]!);
+          if (!Number.isNaN(targetDate.getTime())) {
+            state.selectedDate = stripTime(targetDate);
+            state.anchorDate = stripTime(targetDate);
+            void renderCalendar();
+            closeJumpDialog();
+          }
         }
       }
     } else {
-      const y = parseInt((document.getElementById('hyear-input') as HTMLInputElement).value, 10);
+      let y = parseHebrewNumber((document.getElementById('hyear-input') as HTMLInputElement).value);
+      // אם הוזן רק חלק מהשנה (תשפז = 787) — מוסיפים את האלף החמישי
+      if (y > 0 && y < 1000) y += 5000;
       const m = parseInt((document.getElementById('hmonth-select') as HTMLSelectElement).value, 10);
-      const d = parseInt((document.getElementById('hday-input') as HTMLInputElement).value, 10);
+      const d = parseHebrewNumber((document.getElementById('hday-input') as HTMLInputElement).value);
       if (y > 0 && m > 0 && d > 0) {
-        targetDate = hebrewToDate(y, m, d);
+        void jumpToHebrewDate(y, m, d);
+        closeJumpDialog();
       }
-    }
-
-    if (targetDate && !Number.isNaN(targetDate.getTime())) {
-      state.selectedDate = stripTime(targetDate);
-      state.anchorDate = startOfMonth(targetDate);
-      void renderCalendar();
-      closeJumpDialog();
     }
   });
 
@@ -932,39 +954,84 @@ function closeFeedbackDialog(): void {
 function movePeriod(direction: 1 | -1): void {
   if (state.view === 'month') {
     if (state.calendarDisplay !== 'gregorian') {
-      // ניווט לפי חודש עברי — async
       void moveByHebrewMonth(direction);
       return;
     }
-    state.anchorDate = addMonths(state.anchorDate, direction);
+    // ניווט לועזי: מעבירים גם את היום הנבחר לאותו יום בחודש הבא/הקודם
+    const next = addMonths(state.selectedDate, direction);
+    // שמירה על יום-בחודש; addMonths כבר מטפל בחפיפת ימים
+    state.selectedDate = next;
+    state.anchorDate = next;
   } else {
     const nextSelected = addDays(state.selectedDate, direction * 7);
     state.selectedDate = nextSelected;
-    state.anchorDate = startOfMonth(nextSelected);
+    state.anchorDate = nextSelected;
   }
 
   renderCalendar();
 }
 
 async function moveByHebrewMonth(direction: 1 | -1): Promise<void> {
-  const anchorHebrew = await getHebrewDate(state.anchorDate);
-  let { year, month } = anchorHebrew;
+  // מעבירים את היום הנבחר לאותו יום-בחודש בחודש העברי הבא/הקודם.
+  // שיטה: קופצים ~35 ימים גרגוריאנים (מובטח לחצות חודש עברי אחד),
+  // ואז מתקנים לפי ההפרש בין יום-בחודש הנוכחי ליום-בחודש אחרי הקפיצה.
+  const selHebrew = await getHebrewDate(state.selectedDate);
+  const probe = stripTime(addDays(state.selectedDate, direction * 35));
+  const probeHebrew = await getHebrewDate(probe);
 
-  const months = isHebrewLeapYear(year) ? 13 : 12;
-  month += direction;
-  if (month > months) { month = 1; year++; }
-  if (month < 1) { year--; month = isHebrewLeapYear(year) ? 13 : 12; }
+  const offset = selHebrew.day - probeHebrew.day;
+  let newSelected = stripTime(addDays(probe, offset));
 
-  const newStart = hebrewToDate(year, month, 1);
-  if (newStart) state.anchorDate = newStart;
+  // אם היום המקורי לא קיים בחודש היעד (למשל ל' בחודש של 29 יום),
+  // נצמדים ליום האחרון של אותו חודש.
+  let newHebrew = await getHebrewDate(newSelected);
+  if (newHebrew.month !== probeHebrew.month || newHebrew.year !== probeHebrew.year) {
+    // חצינו חודש — נחזור אחורה עד סוף חודש היעד
+    while (newHebrew.month !== probeHebrew.month || newHebrew.year !== probeHebrew.year) {
+      newSelected = stripTime(addDays(newSelected, -1));
+      newHebrew = await getHebrewDate(newSelected);
+    }
+  }
 
+  state.selectedDate = newSelected;
+  state.anchorDate = newSelected;
+  void renderCalendar();
+}
+
+async function jumpToHebrewDate(y: number, m: number, d: number): Promise<void> {
+  // מתחילים מהחישוב הפנימי כקירוב, ואז מתקנים לפי המארח (עד ±3 ימים)
+  const approx = hebrewToDate(y, m, d);
+  if (!approx) return;
+
+  let candidate = stripTime(approx);
+  let candHebrew = await getHebrewDate(candidate);
+
+  for (let attempts = 0; attempts < 6; attempts++) {
+    if (candHebrew.year === y && candHebrew.month === m && candHebrew.day === d) break;
+    // מחפשים בשני הכיוונים — בודקים ±1 יום
+    const prev = stripTime(addDays(candidate, -1));
+    const next = stripTime(addDays(candidate, 1));
+    const [prevH, nextH] = await Promise.all([getHebrewDate(prev), getHebrewDate(next)]);
+    if (prevH.year === y && prevH.month === m && prevH.day === d) {
+      candidate = prev; candHebrew = prevH; break;
+    }
+    if (nextH.year === y && nextH.month === m && nextH.day === d) {
+      candidate = next; candHebrew = nextH; break;
+    }
+    // אחרת מרחיבים את החיפוש ב-2 ימים לכיוון כלשהו
+    candidate = stripTime(addDays(candidate, 2));
+    candHebrew = await getHebrewDate(candidate);
+  }
+
+  state.selectedDate = candidate;
+  state.anchorDate = candidate;
   void renderCalendar();
 }
 
 function jumpToToday(): void {
   const today = stripTime(new Date());
   state.selectedDate = today;
-  state.anchorDate = startOfMonth(today);
+  state.anchorDate = today;
   renderCalendar();
 }
 
@@ -995,20 +1062,25 @@ function openJumpDialog(): void {
   const dialog = document.getElementById('jump-dialog');
   if (!dialog) return;
 
-  // אתחול ערכי ברירת-מחדל לתאריך הנוכחי הנבחר
   const d = state.selectedDate;
   const isoStr = toDateKey(d);
   const gregInput = document.getElementById('gregorian-date-input') as HTMLInputElement | null;
   if (gregInput) gregInput.value = isoStr;
 
-  // קרוב לשנה העברית הנוכחית (ניחוש גס)
-  const approxYear = d.getFullYear() + 3760;
-  const hyearInput = document.getElementById('hyear-input') as HTMLInputElement | null;
-  if (hyearInput) hyearInput.value = String(approxYear);
-  populateHebrewMonths(approxYear);
+  // מילוי ערכי ברירת-מחדל לפי התאריך העברי של היום הנבחר
+  void (async () => {
+    const h = await getHebrewDate(d);
+    populateHebrewMonths(h.year);
+    const hyearInput = document.getElementById('hyear-input') as HTMLInputElement | null;
+    const hdayInput = document.getElementById('hday-input') as HTMLInputElement | null;
+    const hmonthSelect = document.getElementById('hmonth-select') as HTMLSelectElement | null;
+    if (hyearInput) hyearInput.value = formatHebrewYear(h.year);
+    if (hdayInput) hdayInput.value = toHebrewNumber(h.day);
+    if (hmonthSelect) hmonthSelect.value = String(h.month);
+  })();
 
   dialog.hidden = false;
-  (gregInput ?? document.getElementById('hyear-input'))?.focus();
+  gregInput?.focus();
 }
 
 function closeJumpDialog(): void {
@@ -1066,7 +1138,11 @@ function createDayCell(cell: CalendarCellData): HTMLElement {
 
   button.addEventListener('click', () => {
     state.selectedDate = stripTime(cell.date);
-    state.anchorDate = startOfMonth(cell.date);
+    // אם הלחיצה על יום מחוץ לחודש המוצג — מזיזים את התצוגה לחודש של היום הנלחץ.
+    // אחרת לא משנים anchor, כדי שהתצוגה לא תקפוץ.
+    if (cell.isOutsidePrimaryRange) {
+      state.anchorDate = stripTime(cell.date);
+    }
     renderCalendar();
   });
 
