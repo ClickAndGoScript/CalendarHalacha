@@ -2,13 +2,12 @@
   "name": "otzaria-hebrew-calendar",
   "version": "1.0.0",
   "description": "לוח שנה עברי-לועזי משולב לאוצריא",
-  "main": "src/main.ts",
+  "type": "module",
   "scripts": {
-    "build": "npm run sync:version && npm run build:ts",
-    "build:ts": "tsc",
-    "watch": "tsc --watch",
-    "dev": "tsc --watch",
-    "sync:version": "node scripts/sync-version.js",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run sync:version && npm run typecheck && vite build",
+    "sync:version": "node scripts/sync-version.cjs",
     "package": "bash scripts/package.sh",
     "package:win": "scripts\\package.bat"
   },
@@ -22,6 +21,10 @@
   "license": "AGPL-3.0",
   "devDependencies": {
     "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "lit": "^3.2.0"
   }
 }

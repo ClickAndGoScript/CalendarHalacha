@@ -22,7 +22,7 @@ jobs:
       - name: Read version from version.js
         id: get_version
         run: |
-          VERSION=$(node -p "require('./version.js').version")
+          VERSION=$(node -p "require('./version.cjs').version")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Version from version.js: $VERSION"
       
@@ -52,7 +52,7 @@ jobs:
           TEMP_DIR=$(mktemp -d)
           
           # Copy files
-          cp -r src "$TEMP_DIR/"
+          cp -r dist "$TEMP_DIR/"
           cp manifest.json "$TEMP_DIR/"
           cp LICENSE "$TEMP_DIR/" 2>/dev/null || true
           cp TERMS.md "$TEMP_DIR/" 2>/dev/null || true

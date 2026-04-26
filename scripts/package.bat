@@ -20,7 +20,7 @@ set TEMP_DIR=%TEMP%\otzaria-plugin-%RANDOM%
 mkdir "%TEMP_DIR%"
 
 echo Copying files...
-xcopy /E /I /Q src "%TEMP_DIR%\src"
+xcopy /E /I /Q dist "%TEMP_DIR%\dist"
 copy manifest.json "%TEMP_DIR%\" >nul
 copy LICENSE "%TEMP_DIR%\" >nul 2>&1
 copy TERMS.md "%TEMP_DIR%\" >nul 2>&1

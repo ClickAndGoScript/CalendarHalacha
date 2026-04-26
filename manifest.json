@@ -6,7 +6,7 @@
   "description": "לוח שנה עברי-לועזי משולב עם תצוגת חודש ושבוע, מבוסס Material Design 3",
   "author": "Otzaria",
   "homepage": "https://github.com/Sivan22/otzaria",
-  "entrypoint": "src/index.html",
+  "entrypoint": "dist/index.html",
   "minAppVersion": "0.9.0",
   "sdkVersion": "1.x",
   "permissions": [

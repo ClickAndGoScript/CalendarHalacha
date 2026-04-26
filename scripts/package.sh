@@ -19,7 +19,7 @@ trap "rm -rf $TEMP_DIR" EXIT
 
 # Copy all necessary files
 echo "📋 Copying files..."
-cp -r src "$TEMP_DIR/"
+cp -r dist "$TEMP_DIR/"
 cp manifest.json "$TEMP_DIR/"
 cp LICENSE "$TEMP_DIR/" 2>/dev/null || echo "⚠️  LICENSE file not found"
 cp TERMS.md "$TEMP_DIR/" 2>/dev/null || echo "⚠️  TERMS.md file not found"

@@ -1155,7 +1155,452 @@ interface TrackingState {
 
 החלטות אלו צריכות לשבת ב-JSON, לא להיעלם לתוך הקוד.
 
-## 24. סיכום
+## 24. נספח: החלטות יסוד לפני יישום
+
+הסעיף הזה מתעד החלטות שסוגרות פערים מהותיים מהסעיפים הקודמים. אסור להתחיל קוד בלי שההחלטות האלו ברורות, כי הן משפיעות על מבני נתונים ועל מנוע החישוב.
+
+### 24.1 מודל זמן: תאריך עברי מתחיל בשקיעה
+
+**החלטה:**
+
+- כל החישובים מתבצעים בלוח העברי בלבד.
+- היממה ההלכתית מתחילה בשקיעה.
+- `onah: 'night'` משמעותו הלילה שמתחיל בשקיעת היום הלועזי הקודם, אך שייך לתאריך העברי של היום שאחריו.
+
+**השלכה על מבני נתונים:**
+
+```ts
+interface UserEvent {
+  id: string;
+  type: 'user_event';
+  hebrewDate: {            // מקור האמת
+    day: number;
+    month: number;         // 1..13 (כולל אדר ב')
+    year: number;
+    monthName: string;
+    isLeapYear: boolean;
+  };
+  onah: 'day' | 'night';
+  weekday: number;                       // 0..6 (0=ראשון)
+  gregorianDateKey: string;              // תצוגה בלבד
+  durationOnahs?: number;                // מספר עונות שהאירוע נמשך
+  endHebrewDate?: HebrewDate;            // תאריך סיום אם נמשך מעבר לעונה אחת
+  endOnah?: 'day' | 'night';
+  flowIntensity?: 'spotting' | 'normal' | 'heavy';   // סיווג חופשי, ללא משמעות חישובית קשיחה
+  isOngoing?: boolean;                   // אירוע פעיל שטרם הסתיים
+  precededByOnahsClean?: number;         // מספר עונות נקיות לפני האירוע
+  triggeredBy?: 'spontaneous' | 'physical_cause' | 'medication' | 'other';
+  causeNote?: string;
+  createdAt: string;
+  updatedAt?: string;
+  notes?: string;
+  ignoreForAllCalculations?: boolean;
+  ignoreForPatternsOnly?: boolean;
+  excludedRuleIds?: string[];            // אירוע זה לא יזין כללים מסוימים
+}
+```
+
+- שדה `dateKey` הקודם הוסר. במקומו: `hebrewDate` (מקור אמת לחישוב) + `gregorianDateKey` (לתצוגה).
+- מפתח לוגי לאיתור אירועים לפי יום עברי: `${year}-${month}-${day}` (פונקציית עזר `hebrewDateKey()`).
+
+**השלכה על תצוגה:**
+
+- יום פרישה מחושב מוצג בתא של היום העברי עצמו.
+- בעתיד: תזכורת אופציונלית בתא של היום שלפניו עם הערה "מתחיל מהשקיעה".
+
+### 24.2 כלל תאריך לא קיים: ל' שאינו קיים בחודש היעד
+
+**החלטה:**
+
+- אם אירוע התרחש ב-ל' לחודש קודם, והחודש שאליו מחושבת עונת החודש הוא חסר (29 יום בלבד), היעד יקבע ל-א' בחודש שאחרי (=ר"ח של החודש הבא, שהוא היום השני של ראש החודש).
+
+**השלכה על JSON:**
+
+```json
+{
+  "id": "veset-hachodesh-basic",
+  "operation": "shift_by_hebrew_month_same_day",
+  "missingDayFallback": "next_month_first_day",
+  "...": "..."
+}
+```
+
+המנוע חייב לתמוך באופרטור `missingDayFallback` עם הערכים: `next_month_first_day`, `previous_existing_day`, `skip`.
+
+### 24.3 ריבוי אירועים על אותו יום
+
+**החלטה:**
+
+- מותרים מספר אירועים נפרדים (גם `UserEvent` וגם `ComputedEvent`) על אותו יום עברי.
+- כל אירוע נשמר בנפרד, עם `id` משלו.
+- שכבת התצוגה (`tracking-renderers.ts`) ממזגת אותם ל-chip חזותי אחד עם tooltip שמפרט את כולם.
+
+**שדה `sourceUserEventId` ב-`ComputedEvent`:**
+
+- חייב להיות **רשימה** ולא מחרוזת יחידה — אירוע מחושב יכול להיגזר מכמה אירועי משתמש (למשל הפלגה שמסתמכת על שני אירועים).
+
+```ts
+interface ComputedEvent {
+  id: string;
+  type: 'computed_event';
+  category: 'veset_hachodesh' | 'onah_beinonit' | 'haflagah' | 'fixed_pattern';
+  patternKind?: 'non_fixed' | 'fixed';            // וסת קבוע או שאינו קבוע
+  hebrewDate: { day: number; month: number; year: number; monthName: string; isLeapYear: boolean };
+  gregorianDateKey: string;
+  onah?: 'day' | 'night';
+  weekday?: number;
+  spanOnahs?: number;                              // כמה עונות תופסת תקופת הפרישה
+  endHebrewDate?: HebrewDate;
+  endOnah?: 'day' | 'night';
+  status: 'pending_confirmation' | 'confirmed' | 'rejected' | 'superseded' | 'expired';
+  sourceUserEventIds: string[];
+  relatedUserEventIds: string[];
+  relatedComputedEventIds?: string[];              // הצעות שמסתמכות על הצעה אחרת
+  reasonCode: string;
+  reasonCodes?: string[];                          // כשאותו יום נופל מכמה כללים שונים
+  ruleId: string;
+  ruleIds?: string[];                              // ריבוי כללים תורמים
+  explanation: string;
+  computedFromIntervalDays?: number;               // המרחק שחושב (להפלגה)
+  computedFromMonthOffset?: number;                // הפרש חודשים (לעונת החודש)
+  matchStreak?: number;                            // כמה פעמים רצופות הכלל הזה התקיים
+  patternEstablishedAt?: string;                   // מתי הכלל הפך ל"קבוע"
+  priority: number;                                // לקביעת חשיבות בתצוגה כשיש חפיפות
+  createdAt: string;
+  confirmedAt?: string;
+  rejectedAt?: string;
+  supersededAt?: string;
+  supersededByEventId?: string;
+  supersedesEventIds?: string[];                   // קישור הפוך
+  expiredAt?: string;
+  expiryReason?: 'newer_event' | 'pattern_broken' | 'manual' | 'rule_disabled';
+}
+```
+
+- הסעיף הקודם 7.1 (`sourceUserEventId: string`) מוחלף בהגדרה שכאן.
+
+### 24.4 ביטול אירועים קודמים: בזמן חישוב, לא ב-storage
+
+**החלטה:**
+
+- כשנוצר אירוע משתמש חדש, מנוע החישוב רץ מחדש על כל הנתונים הרלוונטיים ומחזיר מערך מעודכן של הצעות.
+- אירועים מחושבים ישנים שכבר אינם רלוונטיים מסומנים `status: 'superseded'` עם `supersededAt` ו-`supersededByEventId` — לא נמחקים פיזית.
+- מחיקה פיזית רק במקרה שהמשתמש מבקש מפורשות.
+
+**יתרון:** היסטוריית חישובים נשמרת, ניתן להבין למה יום מסוים סומן בעבר ולמה הוסר.
+
+**השלכה על UI:**
+
+- אירועים `superseded` לא מוצגים בלוח כברירת מחדל.
+- מסך "היסטוריה" עתידי יוכל להציג אותם.
+
+### 24.5 סכמת כלל ב-`halachic-rules.json` — שדות חובה
+
+כל כלל ב-`rules[]` חייב להכיל את השדות הבאים:
+
+```json
+{
+  "id": "string — מזהה ייחודי",
+  "name": "string — שם קריא בעברית להצגה ב-debug",
+  "category": "veset_hachodesh | onah_beinonit | haflagah | fixed_pattern",
+  "kind": "absolute_date | weekday | interval_from_event",
+  "enabled": true,
+  "stage": "phase_1 | phase_2 | phase_3",
+
+  "trigger": {
+    "input": "latest_user_event | all_user_events | last_n_events",
+    "n": 3
+  },
+
+  "operation": {
+    "type": "shift_by_hebrew_month_same_day | count_inclusive_days | weekday_match | fixed_interval",
+    "params": {
+      "interval": 30,
+      "missingDayFallback": "next_month_first_day"
+    }
+  },
+
+  "removalConditions": [
+    {
+      "type": "newer_rule_of_same_category | n_events_without_match | manual_only",
+      "n": 3
+    }
+  ],
+
+  "requiresUserConfirmation": true,
+  "createsComputedEvent": true,
+  "reasonCode": "veset_hachodesh_basic",
+  "copyKey": "vesetHachodesh"
+}
+```
+
+**הבחנה בין `reasonCode` ל-`copyKey`:**
+
+- `reasonCode` — מזהה לוגי של הסיבה לחישוב, נשמר ב-`ComputedEvent`, משמש לסינון, מבחנים, ולוגיקה.
+- `copyKey` — מצביע למפתח טקסט ב-`ui-copy.he.json`. שני כללים שונים יכולים לחלוק `copyKey` (אותו ניסוח), אבל `reasonCode` שונה (סיבה לוגית שונה).
+
+**שדה `kind`** מבחין בין שלושת סוגי הכללים שהוגדרו: כלל לפי תאריך מוחלט (כגון יום בחודש), כלל לפי יום בשבוע, וכלל לפי הפרשי זמן מאירוע קודם.
+
+**שדה `removalConditions`** מגדיר מתי הכלל מפסיק להיות פעיל. אופציות:
+
+- `newer_rule_of_same_category` — כלל חדש מאותה קטגוריה מחליף.
+- `n_events_without_match` — לאחר n אירועים שלא תאמו לכלל הזה.
+- `manual_only` — רק המשתמש יכול להסיר.
+
+### 24.6 יצירת `id` ומיגרציית schema
+
+**יצירת מזהים:** `crypto.randomUUID()` — זמין ב-WebView, אפס תלויות, אין התנגשויות.
+
+**Storage schema versioning:**
+
+```json
+{
+  "schemaVersion": 1,
+  "trackingData": {
+    "userEvents": [],
+    "computedEvents": [],
+    "settings": { "showDay31": true }
+  }
+}
+```
+
+לא נכתבת פונקציית מיגרציה עד שיש שינוי schema אמיתי. עד אז — לקרוא את `schemaVersion`, ואם אינו 1 — להציג שגיאה ידידותית.
+
+### 24.7 z-index של שכבות בתא
+
+סדר z-index קבוע בתוך `.calendar-cell`:
+
+| שכבה | z-index |
+|------|---------|
+| `cell-base` | 0 |
+| `cell-markers` | 1 |
+| `cell-count-overlay` | 2 |
+| `cell-focus-ring` | 3 |
+| `cell-add-event-btn` | 4 |
+| `cell-popover-anchor` | 5 |
+
+הפופ-אפ עצמו (לא העוגן) מרונדר מחוץ לתא ומשתמש ב-z-index גבוה יותר ברמת המסמך (`1000+`).
+
+### 24.8 מבני נתונים נוספים
+
+מעבר ל-`UserEvent` ו-`ComputedEvent`, המערכת זקוקה לטיפוסים הבאים. כולם מוגדרים מבחינה חישובית בלבד — ללא הכרעה הלכתית, רק כמיכלים לערכים שהמנוע צריך כדי לחשב, להציג ולנמק.
+
+#### 24.8.1 `HebrewDate` ו-`HebrewDateRange`
+
+```ts
+interface HebrewDate {
+  day: number;          // 1..30
+  month: number;        // 1..13
+  year: number;
+  monthName: string;
+  isLeapYear: boolean;
+}
+
+interface HebrewDateRange {
+  start: HebrewDate;
+  startOnah: 'day' | 'night';
+  end: HebrewDate;
+  endOnah: 'day' | 'night';
+  totalOnahs: number;        // סה"כ עונות בטווח (כולל)
+  totalDays: number;         // סה"כ ימים בטווח
+}
+```
+
+#### 24.8.2 `OnahWindow` — חלון פרישה
+
+מייצג חלון זמן מסומן בלוח (יום פרישה אחד או רצף עונות):
+
+```ts
+interface OnahWindow {
+  id: string;
+  computedEventId: string;             // הצעה שיצרה את החלון
+  startHebrewDate: HebrewDate;
+  startOnah: 'day' | 'night';
+  durationOnahs: number;               // 1 = עונה אחת, 2 = יממה שלמה, וכו'
+  endHebrewDate: HebrewDate;
+  endOnah: 'day' | 'night';
+  reasonCode: string;
+  isExpired: boolean;
+}
+```
+
+#### 24.8.3 `CleanStreak` — רצף עונות נקיות
+
+נדרש לחישוב התבססות/פקיעה של דפוס:
+
+```ts
+interface CleanStreak {
+  id: string;
+  ruleId: string;                      // לאיזה כלל הרצף הזה רלוונטי
+  startedAfterEventId: string;         // אירוע משתמש שאחריו התחיל הרצף
+  cleanOnahsCount: number;
+  cleanEventsCount: number;            // כמה "מחזורים" עברו ללא התאמה לכלל
+  lastCheckedAt: string;
+  brokenByEventId?: string;            // אם הרצף נשבר
+}
+```
+
+#### 24.8.4 `PatternMatch` — תיעוד התאמה של אירוע לכלל
+
+המנוע יוצר רשומה כזו לכל אירוע משתמש שמתאים לכלל קיים. נדרש לזיהוי "וסת קבוע" (3 התאמות רצופות) ולהצגת היסטוריה:
+
+```ts
+interface PatternMatch {
+  id: string;
+  ruleId: string;
+  userEventId: string;
+  matchedAt: string;
+  matchIndex: number;                  // המופע ה-N של הכלל
+  predictedComputedEventId?: string;   // ההצעה שתאמה למציאות
+  deltaOnahs: number;                  // 0 אם תאם בדיוק, אחרת הסטייה
+  isExactMatch: boolean;
+}
+```
+
+#### 24.8.5 `RulePatternState` — מצב כלל ביחס לאירועי המשתמש
+
+לכל כלל פעיל המנוע מחזיק רשומת מצב מצטברת:
+
+```ts
+interface RulePatternState {
+  ruleId: string;
+  status: 'inactive' | 'observing' | 'established' | 'breaking' | 'broken';
+  consecutiveMatches: number;
+  consecutiveMisses: number;
+  matchEventIds: string[];
+  missEventIds: string[];
+  establishedAt?: string;
+  brokenAt?: string;
+  lastEvaluatedAt: string;
+  thresholds: {
+    matchesToEstablish: number;        // נטען מה-JSON של הכלל
+    missesToBreak: number;
+  };
+}
+```
+
+#### 24.8.6 `CalculationProposal` (עדכון)
+
+```ts
+interface CalculationProposal {
+  id: string;
+  ruleId: string;
+  category: ComputedEvent['category'];
+  patternKind?: 'non_fixed' | 'fixed';
+  targetHebrewDates: HebrewDate[];     // יכול להיות ריק עד למספר יעדים
+  targetOnah?: 'day' | 'night';
+  targetWindows: OnahWindow[];         // החלונות שייווצרו אם המשתמש יאשר
+  needsConfirmation: boolean;
+  displayMode: 'anchored_popover' | 'counting_animation' | 'silent';
+  copyKey: string;
+  reasonCode: string;
+  sourceUserEventIds: string[];
+  relatedComputedEventIds?: string[];
+  supersedesEventIds?: string[];       // אילו ComputedEvents יבוטלו אם יאושר
+  metadata: Record<string, string | number | boolean>;
+  computedFromIntervalDays?: number;
+  computedFromMonthOffset?: number;
+  warnings?: string[];                 // חריגות חישוביות (למשל "ל' לא קיים בחודש היעד")
+}
+```
+
+#### 24.8.7 `EngineRunResult` — פלט הרצת מנוע
+
+```ts
+interface EngineRunResult {
+  runId: string;
+  triggeredByEventId: string;
+  ranAt: string;
+  proposals: CalculationProposal[];
+  supersededComputedEventIds: string[];
+  expiredComputedEventIds: string[];
+  patternStateChanges: Array<{
+    ruleId: string;
+    from: RulePatternState['status'];
+    to: RulePatternState['status'];
+  }>;
+  warnings: string[];
+  errors: string[];
+}
+```
+
+#### 24.8.8 `TrackingState` (עדכון)
+
+```ts
+interface TrackingState {
+  schemaVersion: number;
+  userEvents: UserEvent[];
+  computedEvents: ComputedEvent[];
+  patternMatches: PatternMatch[];
+  rulePatternStates: RulePatternState[];
+  cleanStreaks: CleanStreak[];
+  onahWindows: OnahWindow[];
+  activeSession: CalculationSession | null;
+  lastEngineRunId?: string;
+  hoveredDateKey: string | null;
+  popover: {
+    kind: 'none' | 'calculation_confirmation';
+    anchorDateKey?: string;
+    proposalId?: string;
+  };
+}
+```
+
+#### 24.8.9 `RuleSchedule` ו-`RuleScope` בתוך כלל
+
+הרחבה לסכמת `halachic-rules.json` שתומכת בכל סוגי הכללים שהוזכרו (כולל וסת קבוע ופקיעה):
+
+```ts
+interface HalachicRule {
+  id: string;
+  name: string;
+  category: ComputedEvent['category'];
+  kind: 'absolute_date' | 'weekday' | 'interval_from_event';
+  enabled: boolean;
+  stage: 'phase_1' | 'phase_2' | 'phase_3';
+  trigger: RuleTrigger;
+  operation: RuleOperation;
+  scope: {
+    appliesToPatternKind: 'non_fixed' | 'fixed' | 'both';
+    matchesToEstablish: number;            // ברירת מחדל 3
+    missesToBreak: number;                 // ברירת מחדל 3
+    requiresEventOutsideWindow: boolean;   // לפקיעה
+  };
+  produces: {
+    onahsToMark: number;                   // כמה עונות בכל הצעה
+    targetOnah: 'same_as_source' | 'day' | 'night' | 'both';
+  };
+  removalConditions: RuleRemovalCondition[];
+  priority: number;
+  requiresUserConfirmation: boolean;
+  createsComputedEvent: boolean;
+  reasonCode: string;
+  copyKey: string;
+}
+```
+
+### 24.9 רשימת טיפוסים ב-`tracking-types.ts`
+
+הקובץ חייב לייצא לפחות:
+
+- `HebrewDate`, `HebrewDateRange`
+- `UserEvent`
+- `ComputedEvent`
+- `OnahWindow`
+- `CleanStreak`
+- `PatternMatch`
+- `RulePatternState`
+- `CalendarMarker`
+- `CalculationSession`
+- `CalculationProposal`
+- `EngineRunResult`
+- `DayTrackingState`
+- `TrackingState`
+- `HalachicRule` (סכמת JSON ב-TS)
+- `RuleTrigger`, `RuleOperation`, `RuleRemovalCondition`, `RuleKind` (טיפוסי עזר)
+- פונקציות עזר: `hebrewDateKey(d: HebrewDate): string`, `addOnahs(d: HebrewDate, onah: 'day'|'night', n: number): {date: HebrewDate, onah: 'day'|'night'}`
+
+## 25. סיכום
 
 הארכיטקטורה הנכונה לפיצ'ר הזה היא:
 

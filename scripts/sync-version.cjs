@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const versionPath = path.join(__dirname, '..', 'version.js');
+const versionPath = path.join(__dirname, '..', 'version.cjs');
 const manifestPath = path.join(__dirname, '..', 'manifest.json');
 const packagePath = path.join(__dirname, '..', 'package.json');
 
