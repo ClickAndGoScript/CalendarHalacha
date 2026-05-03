@@ -195,6 +195,17 @@ export class DayTrackingLayer extends LitElement {
     this.unsubscribe = trackingStore.subscribe(() => this.refreshFromStore());
   }
 
+  protected updated(changedProperties: PropertyValues): void {
+    super.updated(changedProperties);
+    if (
+      changedProperties.has('year') ||
+      changedProperties.has('month') ||
+      changedProperties.has('day')
+    ) {
+      this.refreshFromStore();
+    }
+  }
+
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this.unsubscribe?.();
