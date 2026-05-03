@@ -11,6 +11,19 @@ import {
   toHebrewNumber,
 } from './shared/hebrew-calendar.js';
 import type { HebrewDate, HolidayLabel } from './shared/hebrew-calendar.js';
+import { trackingStore } from './features/tracking/tracking-store.js';
+import {
+  mountTrackingLayers,
+  attachTrackingEventListeners,
+  type TrackingCellInput,
+} from './features/tracking/tracking-renderers.js';
+import './features/tracking/components/create-event-dialog.js';
+import type { CreateEventDialog } from './features/tracking/components/create-event-dialog.js';
+import {
+  startFlowAfterUserEvent,
+  abortActiveFlow,
+} from './features/tracking/tracking-confirmation-flow.js';
+import type { UserEvent as TrackingUserEvent } from './features/tracking/tracking-types.js';
 
 type CalendarView = 'month' | 'week';
 type CalendarDisplay = 'hebrew' | 'gregorian' | 'combined';
@@ -193,11 +206,37 @@ async function handlePasswordSubmit(mode: 'set' | 'verify'): Promise<void> {
   }
 }
 
+function openCreateEventDialog(date: { year: number; month: number; day: number }): void {
+  // ביטול flow קודם אם פתוח (סעיף 12.2).
+  abortActiveFlow();
+  // אם כבר יש דיאלוג פתוח, להחליף אותו.
+  document.querySelectorAll('create-event-dialog').forEach((el) => el.remove());
+
+  const dialog = document.createElement('create-event-dialog') as CreateEventDialog;
+  dialog.hebrewDate = date;
+  dialog.addEventListener('event-created', (e: Event) => {
+    const ce = e as CustomEvent<TrackingUserEvent>;
+    dialog.remove();
+    void startFlowAfterUserEvent(ce.detail);
+  });
+  dialog.addEventListener('dialog-cancelled', () => dialog.remove());
+  document.body.appendChild(dialog);
+}
+
 function launchMainApp(): void {
   shellRendered = false;
   listenersAttached = false;
   renderShell();
-  void initializeState().then(() => renderCalendar());
+  void initializeState().then(async () => {
+    await trackingStore.load();
+    attachTrackingEventListeners({
+      onAddRequested: (date) => openCreateEventDialog(date),
+      onMarkerClicked: (detail) => {
+        console.log('[tracking] marker clicked', detail);
+      },
+    });
+    await renderCalendar();
+  });
 }
 
 function stripTime(date: Date): Date {
@@ -960,9 +999,17 @@ async function renderCalendar(): Promise<void> {
   if (currentRender !== renderSequence) return;
 
   grid.innerHTML = '';
+  const trackingInputs: TrackingCellInput[] = [];
   cells.forEach((cell) => {
-    grid.appendChild(createDayCell(cell));
+    const cellEl = createDayCell(cell);
+    grid.appendChild(cellEl);
+    trackingInputs.push({
+      cellEl,
+      hebrewDate: { year: cell.hebrew.year, month: cell.hebrew.month, day: cell.hebrew.day },
+      showAdd: !cell.isOutsidePrimaryRange,
+    });
   });
+  mountTrackingLayers(trackingInputs);
 }
 
 async function initializeState(): Promise<void> {
