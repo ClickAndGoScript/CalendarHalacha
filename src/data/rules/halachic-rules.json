@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "principles": {
+    "userEventsOnlyCreateTumahTimes": true,
+    "computedEventsOnlyCreatePrishaTimes": true,
+    "allConditionsMustExistInHalachotDocument": true
+  },
+  "enabledGroups": {
+    "nonFixedVeset": true,
+    "fixedVeset": false,
+    "displayRules": true
+  },
+  "rules": [
+    {
+      "id": "veset-hachodesh-basic",
+      "name": "עונת החודש",
+      "category": "veset_hachodesh",
+      "kind": "absolute_date",
+      "enabled": true,
+      "stage": "phase_1",
+      "trigger": { "input": "latest_user_event" },
+      "operation": {
+        "type": "shift_by_hebrew_month_same_day",
+        "params": {
+          "interval": 1,
+          "missingDayFallback": "next_month_first_day"
+        }
+      },
+      "scope": {
+        "appliesToPatternKind": "non_fixed",
+        "matchesToEstablish": 3,
+        "missesToBreak": 3,
+        "requiresEventOutsideWindow": true
+      },
+      "produces": {
+        "onahsToMark": 1,
+        "targetOnah": "same_as_source"
+      },
+      "removalConditions": [
+        { "type": "newer_rule_of_same_category" }
+      ],
+      "priority": 10,
+      "requiresUserConfirmation": true,
+      "createsComputedEvent": true,
+      "reasonCode": "veset_hachodesh_basic",
+      "copyKey": "vesetHachodesh"
+    },
+    {
+      "id": "onah-beinonit-30-31",
+      "name": "עונה בינונית 30/31",
+      "category": "onah_beinonit",
+      "kind": "interval_from_event",
+      "enabled": true,
+      "stage": "phase_1",
+      "trigger": { "input": "latest_user_event" },
+      "operation": {
+        "type": "count_inclusive_days",
+        "params": {
+          "countFrom": 1,
+          "targets": [30, 31],
+          "missingDayFallback": "skip"
+        }
+      },
+      "scope": {
+        "appliesToPatternKind": "non_fixed",
+        "matchesToEstablish": 3,
+        "missesToBreak": 3,
+        "requiresEventOutsideWindow": true
+      },
+      "produces": {
+        "onahsToMark": 1,
+        "targetOnah": "same_as_source"
+      },
+      "removalConditions": [
+        { "type": "newer_rule_of_same_category" }
+      ],
+      "priority": 20,
+      "requiresUserConfirmation": true,
+      "createsComputedEvent": true,
+      "reasonCode": "onah_beinonit_basic",
+      "copyKey": "onahBeinonit"
+    },
+    {
+      "id": "haflagah-basic",
+      "name": "הפלגה",
+      "category": "haflagah",
+      "kind": "interval_from_event",
+      "enabled": true,
+      "stage": "phase_1",
+      "trigger": { "input": "last_n_events", "n": 2 },
+      "operation": {
+        "type": "fixed_interval",
+        "params": {
+          "missingDayFallback": "skip"
+        }
+      },
+      "scope": {
+        "appliesToPatternKind": "non_fixed",
+        "matchesToEstablish": 3,
+        "missesToBreak": 3,
+        "requiresEventOutsideWindow": true
+      },
+      "produces": {
+        "onahsToMark": 1,
+        "targetOnah": "same_as_source"
+      },
+      "removalConditions": [
+        { "type": "newer_rule_of_same_category" }
+      ],
+      "priority": 30,
+      "requiresUserConfirmation": true,
+      "createsComputedEvent": true,
+      "reasonCode": "haflagah_basic",
+      "copyKey": "haflagahDistance"
+    }
+  ]
+}

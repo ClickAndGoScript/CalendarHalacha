@@ -1,0 +1,32 @@
+{
+  "createEvent": {
+    "title": "יצירת אירוע חדש",
+    "onahLabel": "האם האירוע חל ביום או בלילה?",
+    "dayOption": "יום",
+    "nightOption": "לילה",
+    "notesLabel": "הערה (אופציונלי)",
+    "saveButton": "שמור והתחל חישוב",
+    "cancelButton": "ביטול"
+  },
+  "confirmations": {
+    "vesetHachodesh": "האירוע חל ביום {eventDay} לחודש {eventMonth}, ב{onahLabel}. נראה כי עונת החודש תחול בתאריך {targetDay} בחודש {targetMonth}. האם אתה מאשר?",
+    "onahBeinonit": "האם אתה מאשר לקבוע את ימים {firstTarget} ו-{secondTarget} כעונה בינונית?",
+    "haflagahDistance": "האם אתה מאשר שההפלגה בין האירועים היא {distance} ימים?",
+    "haflagahFuture": "ההפלגה תחול בתאריך {targetDay} בחודש {targetMonth}. האם אתה מאשר?"
+  },
+  "buttons": {
+    "approve": "אשר",
+    "skip": "דלג",
+    "notNow": "לא עכשיו",
+    "whyThisDay": "למה היום הזה?"
+  },
+  "toasts": {
+    "eventSaved": "האירוע נשמר",
+    "prishaDayAdded": "יום הפרישה נוסף",
+    "stepRejected": "השלב נדחה"
+  },
+  "onahLabels": {
+    "day": "יום",
+    "night": "לילה"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "flowId": "new-user-event-flow",
+  "steps": [
+    "create_event",
+    "preview_month_target",
+    "confirm_month_target",
+    "count_onah_beinonit",
+    "confirm_onah_beinonit",
+    "preview_haflagah_if_possible",
+    "confirm_haflagah_if_possible"
+  ]
+}
