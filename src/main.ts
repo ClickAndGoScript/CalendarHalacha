@@ -1,22 +1,19 @@
 /// <reference path="../../otzaria/lib/plugins/sdk/otzaria_plugin.d.ts" />
 
+import {
+  HEBREW_DAY_NAMES,
+  formatHebrewYear,
+  getHebrewDate,
+  hebrewDaysInMonth,
+  hebrewToDate,
+  isHebrewLeapYear,
+  parseHebrewNumber,
+  toHebrewNumber,
+} from './shared/hebrew-calendar.js';
+import type { HebrewDate, HolidayLabel } from './shared/hebrew-calendar.js';
+
 type CalendarView = 'month' | 'week';
 type CalendarDisplay = 'hebrew' | 'gregorian' | 'combined';
-
-interface HebrewDate {
-  day: number;
-  month: number;
-  year: number;
-  monthName: string;
-  isLeapYear: boolean;
-  isShabbat: boolean;
-  holidays: HolidayLabel[];
-}
-
-interface HolidayLabel {
-  text: string;
-  kind: 'yomTov' | 'roshChodesh' | 'taanit' | 'special';
-}
 
 interface CalendarCellData {
   date: Date;
@@ -70,25 +67,8 @@ const state: AppState = {
   theme: null,
 };
 
-const HEBREW_DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-const HEBREW_MONTH_NAMES = [
-  'ניסן',
-  'אייר',
-  'סיון',
-  'תמוז',
-  'אב',
-  'אלול',
-  'תשרי',
-  'חשון',
-  'כסלו',
-  'טבת',
-  'שבט',
-  'אדר',
-];
-
 const GREGORIAN_MONTH_FORMATTER = new Intl.DateTimeFormat('he', { month: 'long' });
 
-const hebrewDateCache = new Map<string, Promise<HebrewDate>>();
 let renderSequence = 0;
 let shellRendered = false;
 let listenersAttached = false;
@@ -254,131 +234,6 @@ function toDateKey(date: Date): string {
   ].join('-');
 }
 
-// ─── המרה מתאריך עברי לגרגוריאני ────────────────────────────────────────────
-
-function _hIsLeap(y: number): boolean { return (7 * y + 1) % 19 < 7; }
-
-function _hElapsed(y: number): number {
-  const mo = Math.floor((235 * y - 234) / 19);
-  const p = 12084 + 13753 * mo;
-  let d = mo * 29 + Math.floor(p / 25920);
-  if ((3 * (d + 1)) % 7 < 3) d++;
-  return d;
-}
-
-function _hYearLen(y: number): number { return _hElapsed(y + 1) - _hElapsed(y); }
-
-function _hDaysInMonth(m: number, y: number): number {
-  if (m === 1 || m === 3 || m === 5 || m === 7 || m === 11) return 30;
-  if (m === 2 || m === 4 || m === 6 || m === 10) return 29;
-  if (m === 8) return _hYearLen(y) % 10 === 5 ? 30 : 29; // חשון
-  if (m === 9) return _hYearLen(y) % 10 === 3 ? 29 : 30; // כסלו
-  if (m === 12) return _hIsLeap(y) ? 30 : 29; // אדר א׳ / אדר
-  if (m === 13) return 29; // אדר ב׳
-  return 0;
-}
-
-function _hMonthsInYear(y: number): number { return _hIsLeap(y) ? 13 : 12; }
-
-function _hDaysBeforeMonth(y: number, m: number): number {
-  let days = 0;
-  if (m >= 7) {
-    for (let i = 7; i < m; i++) days += _hDaysInMonth(i, y);
-  } else {
-    for (let i = 7; i <= _hMonthsInYear(y); i++) days += _hDaysInMonth(i, y);
-    for (let i = 1; i < m; i++) days += _hDaysInMonth(i, y);
-  }
-  return days;
-}
-
-/** ממיר תאריך עברי לאובייקט Date גרגוריאני (חישוב לוקאלי, ללא API). */
-function hebrewToDate(y: number, m: number, d: number): Date | null {
-  if (y < 1 || m < 1 || m > _hMonthsInYear(y) || d < 1 || d > _hDaysInMonth(m, y)) return null;
-  const HEBREW_EPOCH = -1373428; // R.D. של א׳ תשרי שנה א
-  const UNIX_EPOCH_RD = 719163;  // R.D. של 1/1/1970
-  const rd = HEBREW_EPOCH + _hElapsed(y) + _hDaysBeforeMonth(y, m) + d - 1;
-  return new Date((rd - UNIX_EPOCH_RD) * 86400000);
-}
-
-/** מחזיר את מספר הימים בחודש עברי (לצורך בניית תפריט). */
-function hebrewDaysInMonth(m: number, y: number): number { return _hDaysInMonth(m, y); }
-
-/** מחזיר האם שנה עברית עם 13 חודשים. */
-function isHebrewLeapYear(y: number): boolean { return _hIsLeap(y); }
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-function toHebrewNumber(value: number): string {
-  if (value <= 0) return '';
-
-  const units = ['', 'א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט'];
-  const tens = ['', 'י', 'כ', 'ל', 'מ', 'נ', 'ס', 'ע', 'פ', 'צ'];
-  const hundreds = ['', 'ק', 'ר', 'ש', 'ת'];
-
-  if (value === 15) return 'טו';
-  if (value === 16) return 'טז';
-
-  let remaining = value;
-  let output = '';
-
-  while (remaining >= 400) {
-    output += 'ת';
-    remaining -= 400;
-  }
-
-  if (remaining >= 100) {
-    output += hundreds[Math.floor(remaining / 100)];
-    remaining %= 100;
-  }
-
-  if (remaining >= 10) {
-    output += tens[Math.floor(remaining / 10)];
-    remaining %= 10;
-  }
-
-  if (remaining > 0) {
-    output += units[remaining];
-  }
-
-  return output;
-}
-
-const HEBREW_LETTER_VALUES: Record<string, number> = {
-  'א': 1, 'ב': 2, 'ג': 3, 'ד': 4, 'ה': 5, 'ו': 6, 'ז': 7, 'ח': 8, 'ט': 9,
-  'י': 10, 'כ': 20, 'ך': 20, 'ל': 30, 'מ': 40, 'ם': 40, 'נ': 50, 'ן': 50,
-  'ס': 60, 'ע': 70, 'פ': 80, 'ף': 80, 'צ': 90, 'ץ': 90,
-  'ק': 100, 'ר': 200, 'ש': 300, 'ת': 400,
-};
-
-/** ממיר קלט מספרי או גימטריה ("תשפז", "ה'תשפ"ז", "י"ג") למספר. */
-function parseHebrewNumber(input: string): number {
-  if (!input) return NaN;
-  const trimmed = input.trim();
-  // מספר רגיל
-  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
-  // מסירים גרשיים/גרשים/רווחים ואות תחילית ה' של אלפים
-  let cleaned = trimmed.replace(/["'״׳\s]/g, '');
-  // אם מתחיל ב-ה ואחרי יש עוד אותיות — מסירים אותה (אלפי השנים)
-  if (cleaned.startsWith('ה') && cleaned.length > 1) cleaned = cleaned.slice(1);
-  let total = 0;
-  for (const ch of cleaned) {
-    const v = HEBREW_LETTER_VALUES[ch];
-    if (v === undefined) return NaN;
-    total += v;
-  }
-  return total > 0 ? total : NaN;
-}
-
-function formatHebrewYear(year: number): string {
-  const reduced = year % 1000;
-  const text = toHebrewNumber(reduced);
-
-  if (!text) return String(year);
-  if (text.length === 1) return `ה׳${text}׳`;
-
-  return `ה׳${text.slice(0, -1)}״${text.slice(-1)}`;
-}
-
 function formatSelectedTitle(date: Date, hebrew: HebrewDate): string {
   const gregorianMonth = GREGORIAN_MONTH_FORMATTER.format(date);
   const hebrewYear = formatHebrewYear(hebrew.year);
@@ -452,68 +307,6 @@ async function getSelectedDateFromHost(): Promise<Date | null> {
     console.error('calendar.getSelectedDate failed', error);
     return null;
   }
-}
-
-async function getHebrewDate(date: Date): Promise<HebrewDate> {
-  const key = toDateKey(date);
-  const cached = hebrewDateCache.get(key);
-  if (cached) return cached;
-
-  const request = (async () => {
-    try {
-      const response = await Otzaria.call<{
-        year: number;
-        month: number;
-        day: number;
-        isLeapYear?: boolean;
-        monthName?: string;
-        isShabbat?: boolean;
-        holidays?: HolidayLabel[];
-      }>('calendar.getJewishDate', { date: toDateKey(date) });
-
-      if (response.success && response.data) {
-        const month = response.data.month;
-        const isLeapYear = Boolean(response.data.isLeapYear);
-
-        return {
-          day: response.data.day,
-          month,
-          year: response.data.year,
-          monthName: response.data.monthName ?? getHebrewMonthName(month, isLeapYear),
-          isLeapYear,
-          isShabbat: Boolean(response.data.isShabbat),
-          holidays: response.data.holidays ?? [],
-        };
-      }
-    } catch (error) {
-      console.error('calendar.getJewishDate failed', error);
-    }
-
-    // מחיקה מה-cache כדי שהקריאה הבאה תנסה שוב (כשה-SDK יהיה מוכן)
-    hebrewDateCache.delete(key);
-    return fallbackHebrewDate(date);
-  })();
-
-  hebrewDateCache.set(key, request);
-  return request;
-}
-
-function getHebrewMonthName(month: number, isLeapYear: boolean): string {
-  if (isLeapYear && month === 12) return 'אדר א׳';
-  if (isLeapYear && month === 13) return 'אדר ב׳';
-  return HEBREW_MONTH_NAMES[(month - 1) % HEBREW_MONTH_NAMES.length] ?? '';
-}
-
-function fallbackHebrewDate(date: Date): HebrewDate {
-  return {
-    day: date.getDate(),
-    month: ((date.getMonth() + 6) % 12) + 1,
-    year: date.getFullYear() + 3760,
-    monthName: HEBREW_MONTH_NAMES[(date.getMonth() + 6) % 12],
-    isLeapYear: false,
-    isShabbat: date.getDay() === 6,
-    holidays: [],
-  };
 }
 
 function buildVisibleDates(hebrewMonthStart?: Date, hebrewMonthDays?: number): Date[] {
